@@ -486,6 +486,37 @@ with sync_playwright() as p:
     check(sh.get('closedAt') and sh['difference'] == -500 and sh['expectedCash'] == expected, 'shift closed and saved with the difference')
     go('#/settings'); pg.uncheck('#shop-form [name=useShifts]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(200)
 
+    # --- Weekly purchase orders (run on the first open of the week)
+    pg.evaluate("""(()=>{const d=JSON.parse(localStorage.getItem('shop-local-data-v1')); d.meta.settings.lastAutoPo='2000-01-03';
+       d.pos=d.pos||{}; d.pos['auto-2000-01-03-any']={no:'PO-OLD',status:'draft',auto:true,lines:[],ts:1,supplierName:'Any supplier',total:0};
+       localStorage.setItem('shop-local-data-v1',JSON.stringify(d));})()""")
+    pg.reload(); pg.wait_for_timeout(2500)
+    autos = [k for k, p in data(pg)['pos'].items() if p.get('auto')]
+    week = data(pg)['meta']['settings']['lastAutoPo']
+    check(any(k.startswith(f'auto-{week}-') for k in autos), f'weekly purchase orders drafted for the week of {week}')
+    check('auto-2000-01-03-any' not in data(pg)['pos'], "last week's untouched automatic draft was replaced")
+    n_auto = len(autos); pg.reload(); pg.wait_for_timeout(2500)
+    check(len([1 for p in data(pg)['pos'].values() if p.get('auto')]) == n_auto, 'weekly orders are not repeated in the same week')
+
+    # --- Month-end closing
+    go('#/money?tab=report')
+    pg.click('[data-act=close-month]'); pg.wait_for_timeout(300)
+    d = dlg()
+    d.locator('.sal-name').first.fill('Juma'); d.locator('.sal-amt').first.fill('100000')
+    d.locator('[name=maintenancePct]').fill('10'); d.locator('[name=otherSavings]').fill('5000'); d.locator('[name=otherLabel]').fill('Emergencies')
+    d.locator('.sal-amt').first.dispatch_event('input'); pg.wait_for_timeout(100)
+    res = d.locator('#cl-result').inner_text()
+    check('Salaries' in res and 'Profit you can take' in res and 'Keep for restocking' in res, 'closing shows salaries, savings and profit you can take')
+    submit('Close the month'); pg.wait_for_timeout(500)
+    cl = data(pg).get('closings', {})
+    c0 = next(iter(cl.values())) if cl else {}
+    check(c0.get('salaries') == 100000 and c0.get('otherSavings') == 5000 and c0.get('takeHome') == c0.get('netProfit') - c0.get('maintenance') - 5000, f"month closed: take home {c0.get('takeHome')}")
+    check(any(e['category'] == 'Salaries' and e['amount'] == 100000 for e in data(pg)['expenses'].values()), 'salaries saved as an expense for the month')
+    check('Month-end closing' in pg.locator('#print-root .doc').inner_text(), 'closing report opens for PDF')
+    pg.locator('[data-doc-close]').click(); pg.wait_for_timeout(200)
+    check('is closed' in pg.locator('.closing-card').inner_text(), 'Profit tab shows the month is closed')
+    check(data(pg)['meta']['settings']['salaryList'][0]['name'] == 'Juma', 'salary list remembered for next month')
+
     # --- Screens on this size
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
         go(h); pg.wait_for_timeout(300)

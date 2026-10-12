@@ -80,6 +80,10 @@ export default {
           <label class="check"><input type="checkbox" name="autoMonthlyRfq" ${s.autoMonthlyRfq !== false ? 'checked' : ''}> Create quotation requests automatically at the start of each month</label>
           ${field('Message on quotation requests', `<textarea name="rfqNote" rows="2">${esc(s.rfqNote)}</textarea>`)}
           ${field('Message on purchase orders', `<textarea name="poNote" rows="2">${esc(s.poNote || '')}</textarea>`)}
+          <div class="inline-check">
+            <label class="check"><input type="checkbox" name="autoWeeklyPo" ${s.autoWeeklyPo !== false ? 'checked' : ''}> Draft purchase orders every week for items below their minimum, on</label>
+            <select name="weeklyPoDay" aria-label="Day of the week">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${Number(s.weeklyPoDay ?? 1) === i ? 'selected' : ''}>${d}</option>`).join('')}</select>
+          </div>
           <label class="check"><input type="checkbox" name="useShifts" ${s.useShifts ? 'checked' : ''}> Use shifts: count the cash drawer when opening and closing</label>
           <label class="check"><input type="checkbox" name="staffCanReceive" ${s.staffCanReceive ? 'checked' : ''}> Sellers can receive deliveries into stock (otherwise only owners and managers)</label>
           <h3>Lists</h3>
@@ -109,7 +113,7 @@ export default {
           shopName: v.shopName.trim(), phone: v.phone, email: v.email, address: v.address, tin: v.tin,
           leadDays: num(v.leadDays) || 7, coverDays: num(v.coverDays) || 30, windowDays: num(v.windowDays) || 30,
           receiptHeader: v.receiptHeader, receiptFooter: v.receiptFooter, taxName: v.taxName || 'VAT', taxRate: Math.max(0, num(v.taxRate)),
-          autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on', useShifts: v.useShifts === 'on',
+          autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on', useShifts: v.useShifts === 'on', autoWeeklyPo: v.autoWeeklyPo === 'on', weeklyPoDay: Number(v.weeklyPoDay ?? 1),
           payMethods: list(v.payMethods).length ? list(v.payMethods) : ['Cash'],
           expenseCategories: list(v.expenseCategories),
         });

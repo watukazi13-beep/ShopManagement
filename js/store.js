@@ -1,7 +1,7 @@
 // App state + every action that changes data.
 import {
-  DAY, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
-  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected,
+  DAY, monthLabel, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
+  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -25,11 +25,17 @@ export const DEFAULT_SETTINGS = {
   receiptHeader: '',
   receiptFooter: 'Thank you!',
   useShifts: false,
+  autoWeeklyPo: true,
+  weeklyPoDay: 1,
+  lastAutoPo: '',
+  salaryList: [],
+  maintenancePct: 10,
+  lastClosed: '',
   poNote: 'Please supply the items below. Quote this order number on your delivery note and invoice.',
 };
 
 const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments', 'shifts'];
-const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers'];
+const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers', 'closings'];
 
 export const store = {
   backend: null,
@@ -45,7 +51,7 @@ export const store = {
   pending: false,
   online: navigator.onLine,
   since: 0,
-  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [] },
+  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], closings: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [] },
   settings: { ...DEFAULT_SETTINGS },
   _loaded: new Set(),
   _subs: new Set(),
@@ -96,7 +102,7 @@ export const store = {
         this._loaded.add(key);
         if (!this.ready && this._loaded.has('items') && this._loaded.has('meta/settings')) {
           this.ready = true;
-          setTimeout(() => this.autoMonthlyRfq(), 1500);
+          setTimeout(() => { this.autoMonthlyRfq(); this.autoWeeklyPo(); this.closingReminder(); }, 1500);
         }
         this.emit();
       },
@@ -549,6 +555,72 @@ export const store = {
     const ids = this.generateRfqs({ auto: true });
     if (!ids.length) this.saveSettings({ lastAutoRfq: m });
     else this._notify(`${ids.length} monthly request${ids.length > 1 ? 's' : ''} for quotation ready`, 'New month: draft RFQs were created for items that need restocking.', '#/orders');
+  },
+
+  /**
+   * Weekly purchase orders: on the chosen weekday (or the first time the app is opened
+   * after it), draft one PO per supplier for everything at or below its minimum.
+   * Last week's untouched automatic drafts are replaced, so they never pile up.
+   */
+  autoWeeklyPo(now = Date.now()) {
+    if (!this.can('orders') || this.settings.autoWeeklyPo === false || !this.data.items.length) return [];
+    const day = num(this.settings.weeklyPoDay ?? 1);
+    const week = weekKey(now, day);
+    if (this.settings.lastAutoPo === week) return [];
+    const stale = this.data.pos.filter((p) => p.auto && p.status === 'draft' && !String(p.id).startsWith(`auto-${week}-`));
+    if (stale.length) this.backend.write(stale.map((p) => ({ type: 'delete', col: 'pos', id: p.id })));
+    const ids = this.generatePos({ auto: true, week });
+    this.saveSettings({ lastAutoPo: week });
+    if (ids.length) this._notify('Weekly purchase orders ready', `${ids.length} draft purchase order${ids.length > 1 ? 's' : ''} for items below their minimum.`, '#/orders?tab=pos');
+    return ids;
+  },
+
+  // ---------- Month-end closing ----------
+  closingFor(month) { return this.data.closings.find((c) => c.id === month); },
+  closingFigures(pl, opts = {}) {
+    const s = this.settings;
+    return monthClosing(pl, {
+      salaryList: opts.salaryList ?? s.salaryList ?? [],
+      maintenancePct: opts.maintenancePct ?? s.maintenancePct ?? 0,
+      maintenanceFixed: opts.maintenanceFixed ?? 0,
+      otherSavings: opts.otherSavings ?? 0,
+    });
+  },
+  /** Save a month's closing. Optionally records the salary list as expenses for that month. */
+  closeMonth(month, pl, opts) {
+    const f = this.closingFigures(pl, opts);
+    const ops = [];
+    if (opts.recordSalaries && !f.salariesRecorded) {
+      const [, end] = monthRange(month);
+      const ts = Math.min(Date.now(), end - 3600000);
+      for (const s of opts.salaryList || []) {
+        if (!(num(s.amount) > 0)) continue;
+        ops.push({ type: 'set', col: 'expenses', id: this.backend.newId('expenses'), data: { ts, date: dayKey(ts), category: 'Salaries', amount: money(s.amount), note: `Salary — ${s.name || ''}`.trim(), by: this.user?.email || '', ...this._stamp() } });
+      }
+    }
+    const owedToSuppliers = money(this.data.purchases.filter((p) => !p.paid).reduce((t, p) => t + num(p.total), 0));
+    ops.push({
+      type: 'set', col: 'closings', id: month,
+      data: {
+        month, ...f, maintenancePct: num(opts.maintenancePct), otherLabel: opts.otherLabel || '', salaryList: opts.salaryList || [],
+        owedByCustomers: this.owedByCustomers(), owedToSuppliers, byPay: pl.byPay || {}, note: opts.note || '',
+        ts: Date.now(), by: this.user?.email || '', byName: this.user?.name || '',
+      },
+    });
+    ops.push({ type: 'merge', col: 'meta', id: 'settings', data: { salaryList: opts.salaryList || [], maintenancePct: num(opts.maintenancePct), lastClosed: month > (this.settings.lastClosed || '') ? month : this.settings.lastClosed } });
+    this.backend.write(ops);
+    return f;
+  },
+  savingsToDate() {
+    return this.data.closings.reduce((t, c) => ({ maintenance: t.maintenance + num(c.maintenance), other: t.other + num(c.otherSavings) }), { maintenance: 0, other: 0 });
+  },
+  closingReminder(now = Date.now()) {
+    if (!this.can('reports')) return;
+    const prev = addMonths(monthKey(now), -1);
+    const d = new Date(now);
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() === d.getDate();
+    if (lastDay && !this.closingFor(monthKey(now))) this._notify('Month end', 'Today is the last day of the month — close the month in Money → Profit.', `#/money?tab=report&month=${monthKey(now)}`);
+    else if (this.data.sales.some((s) => monthKey(s.ts) === prev) && !this.closingFor(prev)) this._notify('Close last month', `${monthLabel(prev)} has not been closed yet — see your real profit in Money → Profit.`, `#/money?tab=report&month=${prev}`);
   },
 
   // ---------- Settings & access ----------

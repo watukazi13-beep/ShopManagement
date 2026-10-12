@@ -532,3 +532,17 @@ code { font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-
 .count-table th:nth-child(4), .count-table td:nth-child(4) { width: 70px; }
 .disc-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .disc-row input { flex: 1; min-width: 110px; }
+
+.inline-check { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.inline-check select { width: auto; }
+
+.closing-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-color: var(--warn); }
+.closing-card.done { border-color: var(--green); background: var(--green-2); }
+.closing-card small { display: block; color: var(--muted); margin-top: 2px; }
+.sal-row { display: grid; grid-template-columns: 1fr 130px 40px; gap: 8px; margin-bottom: 8px; }
+.statement-dl .line { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.statement-dl dt small { display: block; color: var(--muted); font-size: .75rem; }
+.statement-dl dd { margin: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.statement-dl .strong { font-weight: 700; }
+.statement-dl .total { font-weight: 800; font-size: 1.1rem; border-top: 2px solid var(--ink); border-bottom: 0; }
+.statement-dl .sub { color: var(--muted); }

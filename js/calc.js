@@ -355,3 +355,35 @@ export function shiftExpected(shift, sales = [], payments = [], { cashName = 'Ca
     cashPayments: money(cashPayments), cashIn: money(cashIn), cashOut: money(cashOut), expected: money(expected),
   };
 }
+
+/** Week identifier such as "2026-10-12" (the date the week starts), weeks starting on `startDay` (1 = Monday). */
+export function weekKey(ts = Date.now(), startDay = 1) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  const back = (d.getDay() - startDay + 7) % 7;
+  d.setDate(d.getDate() - back);
+  return dayKey(d.getTime());
+}
+
+/**
+ * Month-end closing: from the month's profit and loss to the profit the owner can take.
+ * Salaries come from the expenses recorded under the salary category when there are any,
+ * otherwise from the staff salary list. Running costs are the other expenses.
+ */
+export function monthClosing(pl, { salaryList = [], salaryCategory = 'Salaries', maintenancePct = 0, maintenanceFixed = 0, otherSavings = 0 } = {}) {
+  const recordedSalaries = num(pl.expenses?.[salaryCategory]);
+  const listedSalaries = salaryList.reduce((t, s) => t + num(s.amount), 0);
+  const salaries = recordedSalaries > 0 ? recordedSalaries : listedSalaries;
+  const runningCosts = Object.entries(pl.expenses || {}).filter(([c]) => c !== salaryCategory).reduce((t, [, v]) => t + num(v), 0);
+  const netProfit = num(pl.grossProfit) - runningCosts - salaries - num(pl.losses);
+  const maintenance = num(maintenanceFixed) > 0 ? num(maintenanceFixed) : Math.max(0, netProfit) * num(maintenancePct) / 100;
+  const other = num(otherSavings);
+  return {
+    revenue: money(pl.revenue), cogs: money(pl.cogs), grossProfit: money(pl.grossProfit),
+    runningCosts: money(runningCosts), salaries: money(salaries), salariesRecorded: recordedSalaries > 0,
+    losses: money(pl.losses), netProfit: money(netProfit),
+    maintenance: money(maintenance), otherSavings: money(other),
+    takeHome: money(netProfit - maintenance - other),
+    stockReplacement: money(pl.cogs),
+  };
+}

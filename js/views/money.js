@@ -107,7 +107,17 @@ export default {
       const pl = profitAndLoss(d, month);
       const expRows = Object.entries(pl.expenses).sort((a, b) => b[1] - a[1]);
       const avg = pl.salesCount ? pl.revenue / pl.salesCount : 0;
+      const closed = store.closingFor(month);
+      const savings = store.savingsToDate();
       body.innerHTML = `
+        <section class="card closing-card ${closed ? 'done' : ''}">
+          ${closed
+            ? `<div class="grow"><b>${esc(monthLabel(month))} is closed</b><small>Profit you could take: <b>${fmt(closed.takeHome)}</b> · maintenance saved ${fmt(closed.maintenance)} · closed ${fmtDate(closed.ts)}${closed.byName ? ' by ' + esc(closed.byName) : ''}</small></div>
+               <button class="btn ghost small" data-act="view-close">View</button>${store.can('settings') ? '<button class="btn ghost small" data-act="close-month">Redo</button>' : ''}`
+            : `<div class="grow"><b>Close ${esc(monthLabel(month))}</b><small>Take off salaries and savings to see the profit you can really take.</small></div>
+               ${store.can('settings') ? '<button class="btn accent" data-act="close-month">Close the month</button>' : ''}`}
+        </section>
+        ${savings.maintenance || savings.other ? `<p class="muted small">Saved so far from closed months: maintenance ${fmt(savings.maintenance)}${savings.other ? ` · other ${fmt(savings.other)}` : ''}</p>` : ''}
         <section class="card statement">
           <div class="card-head"><h2>Profit and loss</h2>
             <div class="row-btns"><button class="btn ghost small" data-act="print">${icon('print')}Print</button><button class="btn ghost small" data-act="csv">${icon('download')}CSV</button></div>
@@ -143,6 +153,8 @@ export default {
           ${pl.topItems.length ? `<table class="table"><thead><tr><th>Item</th><th class="r">Sold</th><th class="r hide-sm">Sales</th><th class="r hide-sm">Cost</th><th class="r">Profit</th></tr></thead>
           <tbody>${pl.topItems.slice(0, 15).map((i) => `<tr><td>${esc(i.name)}</td><td class="r num">${fmtQty(i.qty)}</td><td class="r num hide-sm">${fmt(i.revenue)}</td><td class="r num hide-sm">${fmt(i.cogs)}</td><td class="r num ${i.profit < 0 ? 'neg' : ''}">${fmt(i.profit)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No sales this month.</p>'}
         </section>`;
+      body.querySelector('[data-act=close-month]')?.addEventListener('click', () => openClosing(month, pl));
+      body.querySelector('[data-act=view-close]')?.addEventListener('click', () => printClosing(store.closingFor(month)));
       body.querySelector('[data-act=print]').onclick = () => printHtml(`Profit and loss ${monthLabel(month)}`, `
         <h1>${esc(store.settings.shopName)}</h1><div class="muted">Profit and loss · ${esc(monthLabel(month))}</div>
         <table><tbody>
@@ -272,4 +284,94 @@ export function openExpenseForm(x = null) {
       toast('Expense saved');
     },
   });
+}
+
+/** Month-end closing: salaries, savings and the profit the owner can take. */
+function openClosing(month, pl) {
+  const st = store.settings;
+  const prev = store.closingFor(month);
+  const list = (prev?.salaryList || st.salaryList || []).map((x) => ({ ...x }));
+  if (!list.length) list.push({ name: '', amount: '' });
+  const row = (s) => `<div class="sal-row"><input class="sal-name" placeholder="Name" value="${esc(s.name || '')}" aria-label="Name"><input class="sal-amt" type="number" inputmode="numeric" min="0" step="1" placeholder="Salary" value="${s.amount || ''}" aria-label="Salary"><button type="button" class="icon-btn" data-sal-del aria-label="Remove">${icon('x')}</button></div>`;
+  const recorded = num(pl.expenses?.Salaries);
+  modal({
+    title: `Close ${monthLabel(month)}`,
+    wide: true,
+    body: `
+      <h3>Salaries</h3>
+      ${recorded ? `<p class="small">Salaries already recorded as expenses this month: <b>${fmt(recorded)}</b> — these are used. The list below is kept for next month.</p>` : '<p class="small muted">Who you pay each month. The list is remembered for next month.</p>'}
+      <div id="sal-list">${list.map(row).join('')}</div>
+      <button type="button" class="btn ghost small" data-sal-add>${icon('plus')}Add person</button>
+      ${recorded ? '' : '<label class="check"><input type="checkbox" name="recordSalaries" checked> Also save these salaries as expenses for this month</label>'}
+      <h3>Savings</h3>
+      <div class="grid3">
+        ${field('Maintenance (% of net profit)', `<input name="maintenancePct" type="number" inputmode="decimal" min="0" max="100" step="any" value="${prev?.maintenancePct ?? st.maintenancePct ?? 10}">`)}
+        ${field('Other savings (TSh)', `<input name="otherSavings" type="number" inputmode="numeric" min="0" step="1" value="${prev?.otherSavings || ''}" placeholder="0">`)}
+        ${field('Other savings for', `<input name="otherLabel" value="${esc(prev?.otherLabel || '')}" placeholder="e.g. emergencies, new shop">`)}
+      </div>
+      <h3>Result</h3>
+      <dl class="statement-dl" id="cl-result"></dl>
+      ${field('Note (optional)', `<input name="note" value="${esc(prev?.note || '')}">`)}`,
+    actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Close the month</button>',
+    onMount: (dlg) => {
+      const read = () => ({
+        salaryList: [...dlg.querySelectorAll('.sal-row')].map((r) => ({ name: r.querySelector('.sal-name').value.trim(), amount: num(r.querySelector('.sal-amt').value) })).filter((s) => s.name || s.amount),
+        maintenancePct: num(dlg.querySelector('[name=maintenancePct]').value),
+        otherSavings: num(dlg.querySelector('[name=otherSavings]').value),
+      });
+      const upd = () => {
+        const f = store.closingFigures(pl, read());
+        const line = (t, v, cls = '', sub = '') => `<div class="line ${cls}"><dt>${t}${sub ? `<small>${sub}</small>` : ''}</dt><dd>${v}</dd></div>`;
+        dlg.querySelector('#cl-result').innerHTML = [
+          line('Net sales', fmt(f.revenue)),
+          line('Cost of goods sold', minus(f.cogs)),
+          line('Gross profit', fmt(f.grossProfit), 'strong'),
+          line('Running costs', minus(f.runningCosts), '', 'rent, electricity, transport and other expenses'),
+          line('Salaries', minus(f.salaries)),
+          line('Stock losses', lossText(f.losses)),
+          line('Net profit', fmt(f.netProfit), 'strong'),
+          line('Maintenance savings', minus(f.maintenance)),
+          f.otherSavings ? line('Other savings', minus(f.otherSavings)) : '',
+          line('Profit you can take', fmt(f.takeHome), `total ${f.takeHome < 0 ? 'neg' : ''}`),
+          line('Keep for restocking', fmt(f.stockReplacement), 'sub', 'the cost of what you sold — keep this money to buy the stock back'),
+        ].join('');
+      };
+      dlg.querySelector('[data-sal-add]').addEventListener('click', () => { dlg.querySelector('#sal-list').insertAdjacentHTML('beforeend', row({})); upd(); });
+      dlg.querySelector('#sal-list').addEventListener('click', (e) => { if (e.target.closest('[data-sal-del]')) { e.target.closest('.sal-row').remove(); upd(); } });
+      dlg.addEventListener('input', upd);
+      dlg._read = read;
+      upd();
+    },
+    onSubmit: (v, { form }) => {
+      const opts = { ...form.closest('dialog')._read(), otherLabel: v.otherLabel, note: v.note, recordSalaries: v.recordSalaries === 'on' };
+      store.closeMonth(month, pl, opts);
+      toast(`${monthLabel(month)} closed`);
+      setTimeout(() => printClosing(store.closingFor(month) || { month, ...store.closingFigures(pl, opts), ...opts, ts: Date.now() }), 300);
+    },
+  });
+}
+
+function printClosing(c) {
+  if (!c) return;
+  const st = store.settings;
+  const r = (t, v, cls = '') => `<tr class="${cls}"><td>${t}</td><td class="r">${v}</td></tr>`;
+  printHtml(`Month-end ${c.month}`, `
+    <div class="head"><div><h1>${esc(st.shopName)}</h1><div class="muted">Month-end closing</div></div>
+      <div style="text-align:right"><h1>${esc(monthLabel(c.month))}</h1><div>Closed ${fmtDate(c.ts)}${c.byName ? ' by ' + esc(c.byName) : ''}</div></div></div>
+    <table><tbody>
+      ${r('Net sales', fmt(c.revenue))}${r('Cost of goods sold', minus(c.cogs))}${r('Gross profit', fmt(c.grossProfit), 'tot')}
+      ${r('Running costs', minus(c.runningCosts))}${r('Salaries', minus(c.salaries))}${r('Stock losses', lossText(c.losses))}
+      ${r('Net profit', fmt(c.netProfit), 'tot')}${r(`Maintenance savings (${c.maintenancePct || 0}%)`, minus(c.maintenance))}
+      ${c.otherSavings ? r(`Other savings${c.otherLabel ? ' — ' + esc(c.otherLabel) : ''}`, minus(c.otherSavings)) : ''}
+      ${r('Profit you can take', fmt(c.takeHome), 'tot')}
+    </tbody></table>
+    <h2>Also</h2>
+    <table><tbody>
+      ${r('Keep for restocking (cost of what was sold)', fmt(c.stockReplacement))}
+      ${c.owedByCustomers !== undefined ? r('Customers owe you', fmt(c.owedByCustomers)) : ''}
+      ${c.owedToSuppliers !== undefined ? r('You owe suppliers', fmt(c.owedToSuppliers)) : ''}
+      ${Object.entries(c.byPay || {}).map(([k, v]) => r(`Sales by ${esc(k)}`, fmt(v))).join('')}
+    </tbody></table>
+    ${(c.salaryList || []).length ? `<h2>Salaries</h2><table><tbody>${c.salaryList.map((s) => r(esc(s.name || '—'), fmt(s.amount))).join('')}</tbody></table>` : ''}
+    ${c.note ? `<p>${esc(c.note)}</p>` : ''}`);
 }

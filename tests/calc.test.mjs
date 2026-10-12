@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { shiftExpected, onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
+import { weekKey, monthClosing, shiftExpected, onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
 
 // Average cost: 10 @ 1000 + 10 @ 1200 = 1100
 assert.equal(averageCost(10, 1000, 10, 1200), 1100);
@@ -162,5 +162,26 @@ assert.equal(shOut.expected, 25000);
 assert.equal(shOut.cashSales, 5000);
 assert.equal(shOut.otherSales, 16000);
 assert.equal(shOut.count, 3);
+
+// Weeks start on Monday: Wed 14 Oct 2026 → week of Mon 12 Oct
+assert.equal(weekKey(new Date(2026, 9, 14).getTime()), '2026-10-12');
+assert.equal(weekKey(new Date(2026, 9, 12).getTime()), '2026-10-12');
+assert.equal(weekKey(new Date(2026, 9, 11).getTime()), '2026-10-05');
+
+// Month-end closing: gross profit 500,000 − rent 100,000 − salaries 200,000 − losses 10,000 = 190,000;
+// 10% maintenance = 19,000; other savings 21,000 → take home 150,000
+const plM = { revenue: 1500000, cogs: 1000000, grossProfit: 500000, losses: 10000, expenses: { Rent: 100000 } };
+const cl = monthClosing(plM, { salaryList: [{ name: 'Juma', amount: 120000 }, { name: 'Neema', amount: 80000 }], maintenancePct: 10, otherSavings: 21000 });
+assert.equal(cl.salaries, 200000);
+assert.equal(cl.runningCosts, 100000);
+assert.equal(cl.netProfit, 190000);
+assert.equal(cl.maintenance, 19000);
+assert.equal(cl.takeHome, 150000);
+assert.equal(cl.stockReplacement, 1000000);
+// Salaries already recorded as expenses are used instead of the list (not counted twice)
+const cl2 = monthClosing({ ...plM, expenses: { Rent: 100000, Salaries: 150000 } }, { salaryList: [{ amount: 200000 }] });
+assert.equal(cl2.salaries, 150000);
+assert.equal(cl2.runningCosts, 100000);
+assert.equal(cl2.salariesRecorded, true);
 
 console.log('All calculation tests passed');
