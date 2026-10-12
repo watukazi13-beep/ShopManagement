@@ -68,7 +68,9 @@ function showNoAccess() {
   gate('No access yet', `
     <p><b>${esc(store.user?.email)}</b> is not allowed into this shop.</p>
     <p>Ask the owner to add this email in <b>Settings → People with access</b>, then open the app again.</p>
+    <button class="btn primary block" id="g-retry">Check again</button>
     <button class="btn ghost block" id="g-out">Sign in with another account</button>`);
+  root.querySelector('#g-retry').onclick = () => location.reload();
   root.querySelector('#g-out').onclick = signOut;
 }
 
