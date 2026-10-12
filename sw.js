@@ -1,6 +1,6 @@
 // Service worker: makes the app open and work with no internet.
 // Bump VERSION whenever app files change so devices pick up the update.
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = `shop-${VERSION}`;
 const APP_FILES = [
   './',
@@ -26,7 +26,10 @@ const APP_FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(APP_FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache, so a new version never mixes in old files.
+  e.waitUntil(caches.open(CACHE)
+    .then((c) => c.addAll(APP_FILES.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -61,7 +64,7 @@ self.addEventListener('fetch', (e) => {
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? await cache.match('./index.html') : null);
-    const fresh = fetch(req).then((res) => {
+    const fresh = fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok) cache.put(req, res.clone());
       return res;
     });
