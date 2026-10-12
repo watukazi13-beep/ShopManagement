@@ -4,6 +4,7 @@ import { esc, icon, toast, field, confirmBox, downloadFile, modal } from '../ui.
 import { APP_NAME, MAKER, AUTHOR, VERSION } from '../brand.js';
 
 import { installApp, isInstalled } from '../install.js';
+import { openSetup } from './setup.js';
 
 export default {
   title: 'Settings',
@@ -50,6 +51,7 @@ export default {
         </section>` : ''}
 
         ${boss ? `
+        <section class="card setup-card"><div class="grow"><b>Shop setup</b><small>Step by step: details and logo, payments, receipts, categories, restocking, people, items.</small></div><button type="button" class="btn ghost" data-act="setup">Open setup</button></section>
         <form class="card" id="shop-form">
           <div class="card-head"><h2>Shop details</h2></div>
           <p class="muted small">Printed on receipts and quotation requests.</p>
@@ -138,6 +140,7 @@ export default {
       if (a === 'backup') downloadFile(`shop-backup-${new Date().toISOString().slice(0, 10)}.json`, store.exportJson(), 'application/json');
       if (a === 'connect') openConnect();
       if (a === 'install') installApp();
+      if (a === 'setup') openSetup();
       const rm = e.target.closest('[data-remove]')?.dataset.remove;
       if (rm && await confirmBox(`Remove access for ${rm}?`, { ok: 'Remove', danger: true })) { try { store.setShopMember(rm, null); toast('Access removed'); } catch (err) { toast(err.message, { kind: 'err' }); } }
     });

@@ -165,6 +165,13 @@ export const store = {
     for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
     return ops.length;
   },
+  /** Rename item categories: pairs of [old, new] (same new name merges them). */
+  renameCategories(pairs) {
+    const map = new Map(pairs);
+    const ops = this.data.items.filter((i) => map.has(i.category)).map((i) => ({ type: 'merge', col: 'items', id: i.id, data: { category: map.get(i.category), ...this._stamp() } }));
+    for (let k = 0; k < ops.length; k += 400) this.backend.write(ops.slice(k, k + 400));
+    return ops.length;
+  },
   archiveItem(id) {
     this.backend.write([{ type: 'merge', col: 'items', id, data: { active: false, ...this._stamp() } }]);
   },

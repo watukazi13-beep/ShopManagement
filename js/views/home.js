@@ -5,6 +5,7 @@ import { showReceipt } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
 import { openExpenseForm } from './money.js';
 import { installApp, isInstalled, onInstallChange } from '../install.js';
+import { openSetup } from './setup.js';
 
 export default {
   title: 'Home',
@@ -40,15 +41,11 @@ export default {
           </div>
         </section>
 
-        ${boss && !store.data.items.length ? `
+        ${store.can('settings') && !store.settings.setupDone ? `
         <section class="card soft getting-started">
-          <h2>Get started</h2>
-          <ol class="steps-list">
-            <li><a href="#/settings">Add your shop name and phone</a> (shown on receipts)</li>
-            <li><a href="#/orders?tab=suppliers">Add your suppliers</a></li>
-            <li><a href="#/stock?new=1">Add your items</a> or import them from Loyverse in Stock</li>
-            <li>Start selling. Stock, cost of goods and profit are worked out for you.</li>
-          </ol>
+          <div class="card-head"><h2>Set up your shop</h2></div>
+          <p>A few quick steps: shop details and logo, how customers pay, receipts, categories, restocking${store.mode === 'local' ? '' : ', your staff'} and your items.</p>
+          <div class="row-btns"><button class="btn primary" data-act="setup">Start setup</button><button class="btn ghost" data-act="setup-later">Not now</button></div>
         </section>` : ''}
 
         ${boss ? `
@@ -121,6 +118,8 @@ export default {
     el.addEventListener('click', (e) => {
       const a = e.target.closest('[data-act]')?.dataset.act;
       if (a === 'install') installApp();
+      if (a === 'setup') openSetup();
+      if (a === 'setup-later') store.saveSettings({ setupDone: true });
       if (a === 'install-later') { try { localStorage.setItem('install-dismissed', '1'); } catch { /* ignore */ } draw(); }
       if (a === 'receive') openPurchaseForm();
       if (a === 'expense') openExpenseForm();

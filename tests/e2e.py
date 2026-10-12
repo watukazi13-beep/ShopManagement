@@ -48,7 +48,22 @@ with sync_playwright() as p:
     check(pg.locator('.gate-card .credit').inner_text() == credit, 'credit shown on the start screen')
     pg.click('#g-local'); pg.wait_for_timeout(900)
     check(pg.locator('.hero-figure').inner_text().startswith('TSh 0'), 'home loads in device mode')
-    check(pg.locator('.getting-started').count() == 1, 'getting-started guide shows on an empty shop')
+    check(pg.locator('.getting-started').count() == 1, 'Home offers the shop setup')
+    import base64
+    PNG = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGNk+M+AFTCNSmAAAKMvAQ9XWIhtAAAAAElFTkSuQmCC')
+    pg.click('[data-act=setup]'); pg.wait_for_timeout(250)
+    check('1 of' in dlg().locator('h2').inner_text(), 'setup guide opens at step 1')
+    dlg().locator('[name=shopName]').fill('Greenlight Test Shop'); dlg().locator('[name=phone]').fill('0700 000 000')
+    dlg().locator('#logo-file').set_input_files(files=[{'name': 'logo.png', 'mimeType': 'image/png', 'buffer': PNG}]); pg.wait_for_timeout(400)
+    submit('Save and continue')
+    dlg().locator('#pay-new').fill('Lipa Namba'); dlg().locator('#pay-add').click()
+    submit('Save and continue'); submit('Save and continue'); submit('Save and continue'); submit('Save and continue')
+    check('Your items' in dlg().inner_text(), 'setup reaches the last step (people skipped on a single device)')
+    submit('Finish'); pg.wait_for_timeout(300)
+    st = data(pg)['meta']['settings']
+    check(st.get('shopName') == 'Greenlight Test Shop' and st.get('setupDone') is True and str(st.get('logo', '')).startswith('data:image'), 'setup saved the shop details and logo')
+    check('Lipa Namba' in st.get('payMethods', []), 'a new payment method was added in setup')
+    check(pg.locator('.getting-started').count() == 0, 'setup card goes away when done')
     check(pg.locator('.install-card').count() == 1, 'Home offers to install the app')
     pg.click('.install-card [data-act=install]'); pg.wait_for_timeout(200)
     check('Install the app' in dlg().inner_text() and 'Add to Home screen' in dlg().inner_text(), 'Install explains how on this device when the browser cannot prompt')
@@ -561,6 +576,14 @@ with sync_playwright() as p:
     owed = sum(max(0, c.get('balance', 0)) for c in data(pg)['customers'].values())
     mp = pg.locator('.card', has_text='Money position').inner_text()
     check(f'{owed:,}' in mp and 'You owe suppliers' in mp and 'Stock value' in mp, f'Home shows the money position (customers owe {owed:,})')
+
+    # --- Rename a category from the setup guide in Settings
+    go('#/settings'); pg.click('[data-act=setup]'); pg.wait_for_timeout(250)
+    for _ in range(3): submit('Save and continue')
+    check('Categories' in dlg().inner_text(), 'setup reopens from Settings')
+    dlg().locator('[name="cat:Grains"]').fill('Cereals'); submit('Save and continue'); pg.wait_for_timeout(300)
+    check(item(pg, 'Rice')['category'] == 'Cereals', 'renaming a category moves its items (Grains → Cereals)')
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
 
     # --- Screens on this size
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
