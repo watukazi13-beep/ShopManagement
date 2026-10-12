@@ -1,0 +1,78 @@
+rules_version = '2';
+
+// Security rules for Shop Manager.
+// Paste this whole file into Firebase console → Firestore Database → Rules → Publish.
+//
+// Who can do what:
+//   owner   – the first Google account that sets up the shop; can do everything
+//   manager – everything except managing people
+//   staff   – ("Seller" in the app) record sales and view stock only
+// Anyone else is refused, even if they find the web address.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function access() {
+      return get(/databases/$(database)/documents/meta/access).data;
+    }
+    function isOwner() {
+      return signedIn() && access().owner == request.auth.uid;
+    }
+    function myRole() {
+      return isOwner() ? 'owner'
+        : (myEmail() in access().members ? access().members[myEmail()] : 'none');
+    }
+    function isMember() {
+      return signedIn() && exists(/databases/$(database)/documents/meta/access) && myRole() != 'none';
+    }
+    function isBoss() {
+      return isMember() && myRole() in ['owner', 'manager'];
+    }
+
+    // Access list: owner + allowed emails.
+    match /meta/access {
+      allow read: if signedIn() && (resource == null
+        || resource.data.owner == request.auth.uid
+        || myEmail() in resource.data.members);
+      // Only possible once: the first person to set up the shop becomes owner.
+      allow create: if signedIn()
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.members.size() == 0;
+      allow update: if isOwner()
+        && request.resource.data.owner == resource.data.owner
+        && request.resource.data.ownerEmail == resource.data.ownerEmail;
+      allow delete: if false;
+    }
+
+    match /meta/settings {
+      allow read: if isMember();
+      allow write: if isBoss();
+    }
+
+    match /items/{id} {
+      allow read: if isMember();
+      allow create, delete: if isBoss();
+      // Sellers may only change stock levels (when they record a sale).
+      allow update: if isBoss() || (isMember()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'updatedAt']));
+    }
+
+    match /sales/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.by == myEmail();
+      allow update: if isBoss();      // cancelling a sale
+      allow delete: if isOwner();
+    }
+
+    match /{col}/{id} {
+      allow read: if isMember() && col in ['suppliers', 'rfqs', 'purchases', 'adjustments', 'expenses'];
+      allow write: if isBoss() && col in ['suppliers', 'rfqs', 'purchases', 'adjustments', 'expenses'];
+    }
+  }
+}
