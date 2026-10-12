@@ -3,6 +3,8 @@ import { profitAndLoss, monthKey, monthLabel, addMonths, monthRange, num, dayKey
 import { esc, fmt, fmtQty, fmtDate, fmtTime, pct, icon, modal, toast, field, emptyState, confirmBox, downloadFile, toCsv, printHtml, toInputDate, fromInputDate } from '../ui.js';
 import { showReceipt } from './sell.js';
 
+const minus = (v) => (Math.round(v) > 0 ? '−' : '') + fmt(v);
+const lossText = (v) => (v < 0 ? '+' + fmt(-v) : minus(v));
 const pastCache = new Map(); // month → data, for months older than the live window
 
 async function dataFor(key) {
@@ -67,11 +69,11 @@ export default {
           <dl>
             <div class="line"><dt>Sales</dt><dd>${fmt(pl.revenue)}</dd></div>
             ${pl.discounts ? `<div class="line sub"><dt>Discounts given (already taken off sales)</dt><dd>${fmt(pl.discounts)}</dd></div>` : ''}
-            <div class="line"><dt>Cost of goods sold</dt><dd>−${fmt(pl.cogs, { bare: false })}</dd></div>
+            <div class="line"><dt>Cost of goods sold</dt><dd>${minus(pl.cogs)}</dd></div>
             <div class="line strong"><dt>Gross profit <small>${pct(pl.grossMargin)} of sales</small></dt><dd>${fmt(pl.grossProfit)}</dd></div>
-            ${expRows.map(([c, v]) => `<div class="line sub"><dt>${esc(c)}</dt><dd>−${fmt(v)}</dd></div>`).join('')}
-            <div class="line"><dt>Total expenses</dt><dd>−${fmt(pl.expenseTotal)}</dd></div>
-            <div class="line"><dt>Stock losses <small>damaged, lost, expired, count differences</small></dt><dd>${pl.losses < 0 ? '+' + fmt(-pl.losses) : '−' + fmt(pl.losses)}</dd></div>
+            ${expRows.map(([c, v]) => `<div class="line sub"><dt>${esc(c)}</dt><dd>${minus(v)}</dd></div>`).join('')}
+            <div class="line"><dt>Total expenses</dt><dd>${minus(pl.expenseTotal)}</dd></div>
+            <div class="line"><dt>Stock losses <small>damaged, lost, expired, count differences</small></dt><dd>${lossText(pl.losses)}</dd></div>
             <div class="line total ${pl.netProfit < 0 ? 'neg' : ''}"><dt>Net profit <small>${pct(pl.netMargin)} of sales</small></dt><dd>${fmt(pl.netProfit)}</dd></div>
           </dl>
         </section>
@@ -99,11 +101,11 @@ export default {
         <h1>${esc(store.settings.shopName)}</h1><div class="muted">Profit and loss · ${esc(monthLabel(month))}</div>
         <table><tbody>
           <tr><td>Sales</td><td class="r">${fmt(pl.revenue)}</td></tr>
-          <tr><td>Cost of goods sold</td><td class="r">−${fmt(pl.cogs)}</td></tr>
+          <tr><td>Cost of goods sold</td><td class="r">${minus(pl.cogs)}</td></tr>
           <tr class="tot"><td>Gross profit (${pct(pl.grossMargin)})</td><td class="r">${fmt(pl.grossProfit)}</td></tr>
-          ${expRows.map(([c, v]) => `<tr><td>&nbsp;&nbsp;${esc(c)}</td><td class="r">−${fmt(v)}</td></tr>`).join('')}
-          <tr><td>Total expenses</td><td class="r">−${fmt(pl.expenseTotal)}</td></tr>
-          <tr><td>Stock losses</td><td class="r">−${fmt(pl.losses)}</td></tr>
+          ${expRows.map(([c, v]) => `<tr><td>&nbsp;&nbsp;${esc(c)}</td><td class="r">${minus(v)}</td></tr>`).join('')}
+          <tr><td>Total expenses</td><td class="r">${minus(pl.expenseTotal)}</td></tr>
+          <tr><td>Stock losses</td><td class="r">${lossText(pl.losses)}</td></tr>
           <tr class="tot"><td>Net profit (${pct(pl.netMargin)})</td><td class="r">${fmt(pl.netProfit)}</td></tr>
         </tbody></table>
         <h2>Top items</h2><table><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th><th class="r">Profit</th></tr></thead>

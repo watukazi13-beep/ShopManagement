@@ -225,6 +225,8 @@ with sync_playwright() as p:
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
         go(h); pg.wait_for_timeout(300)
         pg.screenshot(path=f"{OUT}{W}-{h[2:]}.png", full_page=True)
+        sw = pg.evaluate("document.documentElement.scrollWidth")
+        check(sw <= W, f'{h} fits the screen width ({sw}px of {W}px)')
 
     # --- Offline: app must open with no network
     go('#/home'); pg.wait_for_timeout(1500)

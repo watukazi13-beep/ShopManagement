@@ -11,8 +11,8 @@ export default {
     el.innerHTML = `
       <div class="page-head"><h1>Orders</h1></div>
       <div class="seg tabs" role="tablist">
-        <button data-tab="rfq">Quotation requests</button>
-        <button data-tab="received">Stock received</button>
+        <button data-tab="rfq">Requests</button>
+        <button data-tab="received">Received</button>
         <button data-tab="suppliers">Suppliers</button>
       </div>
       <div id="orders-body"></div>`;

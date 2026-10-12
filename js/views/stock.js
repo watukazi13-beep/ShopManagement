@@ -201,7 +201,7 @@ function openItem(item) {
       </div>` : ''}
       <p class="muted small">${[item.category, item.sku && 'SKU ' + item.sku, item.barcode && 'Barcode ' + item.barcode, sup && 'Supplier: ' + sup.name, item.lastCost && boss ? 'Last bought at ' + fmt(item.lastCost) : ''].filter(Boolean).map(esc).join(' · ')}</p>
       <h3>Last 60 days</h3>
-      ${moves.length ? `<ul class="rows">${moves.map((m) => `<li class="row"><div class="grow">${esc(m.what)}<small>${fmtDate(m.ts)}</small></div><span class="num ${m.qty < 0 ? 'neg' : 'pos'}">${m.qty > 0 ? '+' : '−'}${fmtQty(Math.abs(m.qty))}</span></li>`).join('')}</ul>` : '<p class="muted">No movement.</p>'}`,
+      ${moves.length ? `<ul class="rows">${moves.map((m) => `<li class="row"><div class="grow">${esc(m.what)}<small>${fmtDate(m.ts)}</small></div><span class="num ${m.qty < 0 ? 'neg' : 'up'}">${m.qty > 0 ? '+' : '−'}${fmtQty(Math.abs(m.qty))}</span></li>`).join('')}</ul>` : '<p class="muted">No movement.</p>'}`,
     actions: boss
       ? `<button type="button" class="btn ghost" data-edit>${icon('edit')}Edit</button>${item.service ? '' : `<button type="button" class="btn ghost" data-adjust>Adjust stock</button>`}<button class="btn primary">Done</button>`
       : '<button class="btn primary">Done</button>',

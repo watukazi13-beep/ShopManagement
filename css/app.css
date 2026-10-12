@@ -69,7 +69,7 @@ small, .small { font-size: 0.83rem; }
 .center { text-align: center; }
 .num, .stats strong, .hero-figure, .big-total, td.num { font-variant-numeric: tabular-nums; }
 .neg { color: var(--bad); }
-.pos { color: var(--good); }
+.up { color: var(--good); }
 .warn-text { color: var(--warn); }
 .hide-sm { display: none; }
 @media (min-width: 640px) { .hide-sm { display: revert; } }
@@ -297,6 +297,8 @@ ul.rows.card { padding: 0 16px; }
 
 /* ---------- Sell ---------- */
 .pos { display: grid; gap: 16px; }
+.pos > *, .view > *, .toolbar > * { min-width: 0; }
+.chips { max-width: 100%; }
 .pos-items .searchbar { margin-bottom: 10px; }
 .pos-items .searchbar input { min-height: 50px; font-size: 1.05rem; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
