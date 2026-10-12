@@ -1,6 +1,7 @@
 import { store } from '../store.js';
 import { num, soldQty, stockValue, DAY } from '../calc.js';
 import { esc, fmt, fmtQty, fmtDate, icon, modal, toast, field, statusPill, emptyState, confirmBox, downloadFile, toCsv, parseCsv } from '../ui.js';
+import { openReceivePo, isLate } from './orders.js';
 
 const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'box', 'carton', 'bag', 'dozen', 'packet', 'bottle', 'tin', 'pair', 'metre'];
 
@@ -25,7 +26,7 @@ export default {
       <div class="toolbar">
         <div class="searchbar">${icon('search')}<input type="search" id="stock-q" placeholder="Search items" autocomplete="off"></div>
         <div class="seg" role="tablist">
-          <button data-f="all">All</button><button data-f="low">Needs restock</button>
+          <button data-f="all">All</button><button data-f="low">Needs restock</button><button data-f="incoming">Incoming<span class="seg-count" id="inc-count"></span></button>
         </div>
         <select id="stock-cat" aria-label="Category"></select>
       </div>
@@ -37,6 +38,8 @@ export default {
     const draw = () => {
       if (!store.ready) { listEl.innerHTML = '<div class="loading">Loading…</div>'; return; }
       el.querySelectorAll('[data-f]').forEach((b) => b.classList.toggle('on', b.dataset.f === filter));
+      const incoming = store.openPos();
+      el.querySelector('#inc-count').textContent = incoming.length ? ` ${incoming.length}` : '';
       const plan = store.plan();
       const items = store.activeItems();
       const cats = [...new Set(items.map((i) => i.category || 'Other'))].sort();
@@ -44,7 +47,7 @@ export default {
       catEl.hidden = cats.length < 2;
       if (boss) {
         const v = stockValue(items);
-        const lows = plan.filter((p) => p.status !== 'ok').length;
+        const lows = plan.filter((p) => p.status === 'out' || p.status === 'low').length;
         sumEl.innerHTML = `<div class="stats compact">
           <div><span>Items</span><strong>${items.length}</strong></div>
           <div><span>Stock value (cost)</span><strong>${fmt(v.cost)}</strong></div>
@@ -54,6 +57,7 @@ export default {
           <div class="${lows ? 'warn' : ''}"><span>Need restock</span><strong>${lows}</strong></div>
         </div>`;
       }
+      if (filter === 'incoming') { drawIncoming(incoming); return; }
       const s = q.toLowerCase();
       const services = items.filter((i) => i.service).map((item) => ({ item, stock: 0, status: 'ok', service: true }));
       const rows = [...plan, ...services].filter((p) =>
@@ -67,7 +71,7 @@ export default {
           <tbody>${rows.map((p) => `
             <tr class="tap" data-item="${p.item.id}">
               <td><b>${esc(p.item.name)}</b><small>${esc(p.item.category || '')}${p.item.sku ? ' · ' + esc(p.item.sku) : ''}</small></td>
-              <td class="r num">${p.service ? '—' : `${fmtQty(p.stock)} <small class="unit">${esc(p.item.unit || '')}</small><small class="only-sm levels">min ${fmtQty(p.item.minStock || 0)} · max ${p.maxSet ? fmtQty(p.item.maxStock) : '—'}</small>`}</td>
+              <td class="r num">${p.service ? '—' : `${fmtQty(p.stock)} <small class="unit">${esc(p.item.unit || '')}</small><small class="only-sm levels">min ${fmtQty(p.item.minStock || 0)} · max ${p.maxSet ? fmtQty(p.item.maxStock) : '—'}</small>${p.onOrder ? `<small class="on-order">+${fmtQty(p.onOrder)} on order</small>` : ''}`}</td>
               <td class="r num hide-sm">${p.item.variablePrice ? '<span class="muted">Variable</span>' : fmt(p.item.price)}</td>
               ${boss ? `<td class="r num hide-sm">${fmt(p.item.cost)}</td>` : ''}
               <td class="r num hide-sm">${p.service ? '' : fmtQty(p.item.minStock || 0)}</td>
@@ -82,11 +86,28 @@ export default {
             boss ? '<div class="row-btns"><button class="btn primary" data-act="new">Add an item</button><button class="btn ghost" data-act="import">Import from Loyverse</button></div>' : '');
     };
 
+    function drawIncoming(list) {
+      const canRecv = store.can('receive');
+      list = [...list].sort((a, b) => (a.expectedTs || 0) - (b.expectedTs || 0));
+      listEl.innerHTML = list.length ? `<ul class="rows card">${list.map((po) => {
+        const left = po.lines.filter((l) => num(l.received) < num(l.qty));
+        return `<li class="row ${canRecv ? 'tap' : ''}" data-incoming="${po.id}">
+          <div class="grow"><b>${esc(po.supplierName || 'Any supplier')}</b>
+            <small>${esc(po.no)} · expected ${fmtDate(po.expectedTs)} · ${left.map((l) => `${esc(l.name)} ${fmtQty(num(l.qty) - num(l.received))}`).slice(0, 3).join(', ')}${left.length > 3 ? ` +${left.length - 3} more` : ''}</small></div>
+          ${isLate(po) ? '<span class="pill bad">Late</span>' : po.status === 'partial' ? '<span class="pill warn">Partly received</span>' : '<span class="pill info">Ordered</span>'}
+          ${canRecv ? `<button type="button" class="btn primary small" data-recv="${po.id}">Receive</button>` : ''}
+        </li>`;
+      }).join('')}</ul>${canRecv ? '' : '<p class="muted small">An owner or manager receives deliveries.</p>'}`
+        : emptyState('Nothing on its way', 'Purchase orders marked as Ordered show here until their goods arrive.', store.can('orders') ? '<a class="btn ghost" href="#/orders?tab=pos">Go to purchase orders</a>' : '');
+    }
+
     el.querySelector('#stock-q').addEventListener('input', (e) => { q = e.target.value.trim(); draw(); });
     catEl.addEventListener('change', () => { cat = catEl.value; draw(); });
     el.addEventListener('click', (e) => {
       const f = e.target.closest('[data-f]')?.dataset.f;
       if (f) { filter = f; draw(); return; }
+      const rv = e.target.closest('[data-recv]')?.dataset.recv || (store.can('receive') && e.target.closest('[data-incoming]')?.dataset.incoming);
+      if (rv) { openReceivePo(rv); return; }
       const a = e.target.closest('[data-act]')?.dataset.act;
       if (a === 'new') openItemForm();
       if (a === 'import') openImport();
@@ -190,7 +211,7 @@ function openItem(item) {
   const since = Date.now() - 60 * DAY;
   const moves = [
     ...store.data.sales.filter((s) => !s.voided && s.ts >= since).flatMap((s) => s.lines.filter((l) => l.itemId === item.id).map((l) => ({ ts: s.ts, qty: -l.qty, what: `Sold · ${s.no}` }))),
-    ...store.data.purchases.filter((p) => p.ts >= since).flatMap((p) => p.lines.filter((l) => l.itemId === item.id).map((l) => ({ ts: p.ts, qty: l.qty, what: `Received${p.supplierName ? ' from ' + p.supplierName : ''} @ ${fmt(l.cost)}` }))),
+    ...store.data.purchases.filter((p) => p.ts >= since).flatMap((p) => p.lines.filter((l) => l.itemId === item.id).map((l) => ({ ts: p.ts, qty: l.qty, what: `Received${p.poNo ? ' on ' + p.poNo : ''}${p.supplierName ? ' from ' + p.supplierName : ''} @ ${fmt(l.cost)}` }))),
     ...store.data.adjustments.filter((a) => a.itemId === item.id && a.ts >= since).map((a) => ({ ts: a.ts, qty: a.qty, what: a.reason })),
   ].sort((a, b) => b.ts - a.ts).slice(0, 25);
   const sup = store.supplier(item.supplierId);
@@ -212,6 +233,13 @@ function openItem(item) {
         <div class="${plan.status !== 'ok' ? 'warn' : ''}"><span>${plan.suggestQty ? 'Order now' : 'Lasts about'}</span><strong>${plan.suggestQty ? fmtQty(plan.suggestQty) + ' ' + esc(item.unit || '') : plan.daysLeft !== null ? Math.floor(plan.daysLeft) + ' days' : '—'}</strong></div>
       </div>` : ''}
       <p class="muted small">${[item.category, item.sku && 'SKU ' + item.sku, item.barcode && 'Barcode ' + item.barcode, sup && 'Supplier: ' + sup.name, item.lastCost && boss ? 'Last bought at ' + fmt(item.lastCost) : ''].filter(Boolean).map(esc).join(' · ')}</p>
+      ${(() => {
+        const open = store.openPos().filter((po) => po.lines.some((l) => l.itemId === item.id && num(l.received) < num(l.qty)));
+        return open.length ? `<h3>On order</h3><ul class="rows">${open.map((po) => {
+          const l = po.lines.find((x) => x.itemId === item.id);
+          return `<li class="row"><div class="grow">${esc(po.no)} · ${esc(po.supplierName)}<small>expected ${fmtDate(po.expectedTs)}${isLate(po) ? ' · late' : ''}</small></div><span class="num up">+${fmtQty(num(l.qty) - num(l.received))}</span></li>`;
+        }).join('')}</ul>` : '';
+      })()}
       <h3>Last 60 days</h3>
       ${moves.length ? `<ul class="rows">${moves.map((m) => `<li class="row"><div class="grow">${esc(m.what)}<small>${fmtDate(m.ts)}</small></div><span class="num ${m.qty < 0 ? 'neg' : 'up'}">${m.qty > 0 ? '+' : '−'}${fmtQty(Math.abs(m.qty))}</span></li>`).join('')}</ul>` : '<p class="muted">No movement.</p>'}`,
     actions: boss

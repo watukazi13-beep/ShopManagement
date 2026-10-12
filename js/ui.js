@@ -58,6 +58,8 @@ export const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 
 export function toast(msg, { kind = 'ok', link, ms = 3200 } = {}) {
   let wrap = document.getElementById('toasts');
   if (!wrap) { wrap = document.createElement('div'); wrap.id = 'toasts'; document.body.append(wrap); }
+  // Keep at most two messages on screen so they never cover the page.
+  while (wrap.children.length >= 2) wrap.firstElementChild.remove();
   const t = document.createElement(link ? 'a' : 'div');
   t.className = `toast toast-${kind}`;
   if (link) t.href = link;
@@ -195,7 +197,7 @@ export function emptyState(title, text, action = '') {
 }
 
 export function statusPill(status) {
-  const map = { out: ['Out of stock', 'bad'], low: ['Low', 'warn'], ok: ['OK', 'good'] };
+  const map = { out: ['Out of stock', 'bad'], low: ['Low', 'warn'], onorder: ['On order', 'info'], ok: ['OK', 'good'] };
   const [t, c] = map[status] || [status, ''];
   return `<span class="pill ${c}">${t}</span>`;
 }

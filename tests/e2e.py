@@ -184,12 +184,18 @@ with sync_playwright() as p:
     d.locator('[data-wa]').click(); pg.wait_for_timeout(200)
     check('REQUEST%20FOR%20QUOTATION' in pg.evaluate('window.__opened')[-1], 'RFQ sent via WhatsApp text')
     check(list(data(pg)['rfqs'].values())[0]['status'] == 'sent', 'RFQ marked as sent')
-    d.locator('[data-receive]').click(); pg.wait_for_timeout(300)
+    d.locator('[data-make-po]').click(); pg.wait_for_timeout(400)
     d = dlg()
-    check(d.locator('.li-name').first.input_value() == 'Cooking oil 1L', 'goods-arrived opens receive form pre-filled from RFQ')
+    check(d.locator('.li-name').first.input_value() == 'Cooking oil 1L' and d.locator('.li-qty').first.input_value() == '12', 'Make purchase order fills the PO from the RFQ')
     d.locator('.li-cost').first.fill('5200')
-    submit('Add to stock')
-    check(item(pg, 'Cooking oil 1L')['stock'] == 14 and list(data(pg)['rfqs'].values())[0]['status'] == 'closed', 'RFQ goods received: oil 14, RFQ closed')
+    d.locator('[data-order]').click(); pg.wait_for_timeout(300)
+    oil_po = next(p for p in data(pg)['pos'].values() if p.get('rfqId'))
+    check(list(data(pg)['rfqs'].values())[0]['status'] == 'ordered' and oil_po['status'] == 'ordered' and oil_po['lines'][0]['cost'] == 5200, 'RFQ turned into an ordered PO at the quoted price')
+    go('#/stock'); pg.click('[data-f=incoming]'); pg.wait_for_timeout(200)
+    pg.locator('[data-recv]').first.click(); pg.wait_for_timeout(250)
+    submit('Receive into stock'); pg.wait_for_timeout(300)
+    check(item(pg, 'Cooking oil 1L')['stock'] == 14, 'PO goods received: oil 14')
+    pg.click('[data-f=all]')
     check(pg.locator('[data-nav=stock]').get_attribute('data-badge') in ('', None), 'low-stock badge cleared')
 
     # --- Monthly auto RFQ runs once
@@ -276,6 +282,72 @@ with sync_playwright() as p:
     check(chalk_line.get('qty') == 238, f"order fills Chalk up to its maximum: 400 − 162 = 238 (got {chalk_line.get('qty')})")
     pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
 
+    # --- Purchase orders: order → on order in Stock → receive part → receive the rest
+    def pos_(): return list(data(pg).get('pos', {}).values())
+    go('#/orders?tab=pos'); pg.click('[data-act=po-low]'); pg.wait_for_timeout(400)
+    chalk_po = next((p for p in pos_() if any(l['name'] == 'Chalk' for l in p['lines'])), None)
+    check(chalk_po is not None and chalk_po['status'] == 'draft', 'Fill from low stock drafts a purchase order')
+    cl = next(l for l in chalk_po['lines'] if l['name'] == 'Chalk')
+    check(cl['qty'] == 238 and cl['cost'] == 10, f"PO line fills Chalk to its maximum at the last cost (got {cl['qty']} @ {cl['cost']})")
+    if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+    pg.locator('[data-po]', has_text=chalk_po['no']).click(); pg.wait_for_timeout(250)
+    dlg().locator('[data-print]').click(); pg.wait_for_timeout(300)
+    check(len(pos_()) == len([p for p in pos_()]) and sum(1 for p in pos_() if p['no'] == chalk_po['no']) == 1, 'printing a PO does not duplicate it')
+    dlg().locator('[data-order]').click(); pg.wait_for_timeout(300)
+    chalk_po = next(p for p in pos_() if p['no'] == chalk_po['no'])
+    check(chalk_po['status'] == 'ordered', 'PO marked as ordered')
+    go('#/stock'); row = pg.locator('#stock-list tr', has_text='Chalk').inner_text()
+    check('On order' in row and '+238 on order' in row, 'Stock shows Chalk as On order (+238)')
+    go('#/orders?tab=pos')
+    if pg.locator('[data-act=po-low]').is_enabled(): pg.click('[data-act=po-low]'); pg.wait_for_timeout(300)
+    check(not any(any(l['name'] == 'Chalk' for l in p['lines']) for p in pos_() if p['status'] == 'draft'), 'Chalk is not ordered twice')
+    if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+    # receive part
+    go('#/stock'); pg.click('[data-f=incoming]'); pg.wait_for_timeout(200)
+    check(pg.locator('[data-incoming]').count() >= 1, 'Incoming tab lists the ordered PO')
+    pg.locator('[data-incoming]', has_text=chalk_po['no']).locator('[data-recv]').click(); pg.wait_for_timeout(250)
+    r = dlg().locator('tr[data-item]', has_text='Chalk')
+    check(r.locator('.rv-qty').input_value() == '238', 'receive form is filled with the quantity to come')
+    r.locator('.rv-qty').fill('200'); r.locator('.rv-cost').fill('12')
+    check(dlg().locator('#rv-short-wrap').is_visible(), 'short delivery offers to close the order')
+    submit('Receive into stock'); pg.wait_for_timeout(400)
+    ch = item(pg, 'Chalk'); chalk_po = next(p for p in pos_() if p['no'] == chalk_po['no'])
+    check(ch['stock'] == 362, f"stock goes up automatically: 162 + 200 = 362 (got {ch['stock']})")
+    check(abs(ch['cost'] - (162 * 10 + 200 * 12) / 362) < 0.01, f"average cost updated to {ch['cost']:.2f}")
+    check(chalk_po['status'] == 'partial', 'PO is partly received')
+    pg.click('[data-f=all]'); pg.wait_for_timeout(200); row = pg.locator('#stock-list tr', has_text='Chalk').inner_text()
+    check('+38 on order' in row, 'the 38 still to come stay on order')
+    # receive the rest
+    pg.click('[data-f=incoming]'); pg.wait_for_timeout(200)
+    pg.locator('[data-incoming]', has_text=chalk_po['no']).locator('[data-recv]').click(); pg.wait_for_timeout(250)
+    submit('Receive into stock'); pg.wait_for_timeout(400)
+    chalk_po = next(p for p in pos_() if p['no'] == chalk_po['no'])
+    check(item(pg, 'Chalk')['stock'] == 400 and chalk_po['status'] == 'received', 'second delivery completes the PO: Chalk 400')
+    rec = [p for p in data(pg)['purchases'].values() if p.get('poNo') == chalk_po['no']]
+    check(len(rec) == 2, 'each delivery is saved against the PO')
+    # a new PO by hand, then cancel it
+    go('#/orders?tab=pos'); pg.click('[data-act=new-po]'); pg.wait_for_timeout(250)
+    first = dlg().locator('.line-row').first
+    first.locator('.li-name').fill('Rice'); first.locator('.li-name').dispatch_event('change'); first.locator('.li-qty').fill('10'); first.locator('.li-cost').fill('2000')
+    n0 = len(pos_()); submit('Save draft'); pg.wait_for_timeout(300)
+    rice_po = next(p for p in pos_() if any(l['name'] == 'Rice' for l in p['lines']))
+    check(len(pos_()) == n0 + 1 and rice_po['total'] == 20000, 'new PO saved with total TSh 20,000')
+    pg.locator('[data-po]', has_text=rice_po['no']).click(); pg.wait_for_timeout(250); dlg().locator('[data-order]').click(); pg.wait_for_timeout(300)
+    pg.locator('[data-po]', has_text=rice_po['no']).click(); pg.wait_for_timeout(250); dlg().locator('[data-cancel-po]').click(); pg.wait_for_timeout(250)
+    dlg().get_by_role('button', name='Cancel order', exact=True).click(); pg.wait_for_timeout(300)
+    check(next(p for p in pos_() if p['no'] == rice_po['no'])['status'] == 'cancelled', 'an ordered PO can be cancelled')
+    # quotation request → purchase order
+    go('#/orders?tab=rfq')
+    open_rfq = next(({**r, 'id': k} for k, r in data(pg)['rfqs'].items() if r['status'] in ('draft', 'sent')), None)
+    if open_rfq:
+        pg.locator('[data-rfq]', has_text=open_rfq['no']).first.click(); pg.wait_for_timeout(250)
+        dlg().locator('[data-make-po]').click(); pg.wait_for_timeout(500)
+        made = [p for p in pos_() if p.get('rfqId') == open_rfq['id']]
+        check(len(made) == 1 and data(pg)['rfqs'][open_rfq['id']]['status'] == 'ordered', 'a quotation request becomes a purchase order')
+        if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+    go('#/home')
+    check(pg.locator('text=Expected deliveries').count() == (1 if any(p['status'] in ('ordered', 'partial') for p in pos_()) else 0), 'Home shows expected deliveries when orders are open')
+
     # --- Screens on this size
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
         go(h); pg.wait_for_timeout(300)
@@ -285,13 +357,14 @@ with sync_playwright() as p:
 
     # --- Offline: app must open with no network
     go('#/home'); pg.wait_for_timeout(1500)
+    soap_before = item(pg, 'Bar soap')['stock']
     ctx.set_offline(True)
     pg.reload(); pg.wait_for_timeout(1500)
     check(pg.locator('.hero-figure').count() == 1, 'app opens offline from the cache')
     go('#/sell'); pg.locator('.tile', has_text='Bar soap').click()
     if W < 900: pg.click('#cart-bar'); pg.wait_for_timeout(150)
     pg.click('[data-charge]'); pg.wait_for_timeout(200); submit('Complete sale'); pg.wait_for_timeout(300)
-    check(item(pg, 'Bar soap')['stock'] == 0, 'a sale works offline')
+    check(item(pg, 'Bar soap')['stock'] == soap_before - 1, f"a sale works offline (Bar soap {soap_before} → {item(pg, 'Bar soap')['stock']})")
     ctx.set_offline(False)
 
     if os.environ.get('DUMP'): open(os.environ['DUMP'], 'w').write(json.dumps(data(pg)))

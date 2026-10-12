@@ -407,8 +407,12 @@ dialog.sheet[open] { animation: up .18s ease-out; }
 .line-head { font-size: .78rem; font-weight: 700; color: var(--muted); padding: 4px 0; }
 .line-row { margin-bottom: 8px; }
 .line-row input { min-height: 42px; padding: 8px 10px; }
+.li-f { display: block; margin: 0; }
+.li-f > span { display: none; font-size: .72rem; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
+.line-row .icon-btn { align-self: end; }
 @media (max-width: 480px) {
   .line-head { display: none; }
+  .li-f > span { display: block; }
   .line-row { grid-template-columns: 1fr 1fr 40px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
   .line-row .li-name { grid-column: 1 / -1; }
   .lines:not(:has(.li-cost)) .line-row { grid-template-columns: 1fr 40px; }
@@ -463,3 +467,17 @@ code { font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-
 .toast.out { opacity: 0; transform: translateY(-8px); }
 
 .notify-hint { margin: 12px 0 0; color: var(--muted); }
+
+/* ---------- Purchase orders ---------- */
+.pill.info { background: var(--info-bg, #e3eefb); color: var(--info, #1f5fa8); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pill.info { background: #1d3550; color: #9cc4f0; } }
+.on-order { display: block; font-size: .72rem; color: var(--info, #1f5fa8); white-space: nowrap; font-weight: 600; }
+.seg-count { font-weight: 700; }
+.recv-table input { width: 100%; min-height: 38px; padding: 6px 8px; text-align: right; }
+.recv-table { table-layout: fixed; width: 100%; }
+.recv-table th:nth-child(2), .recv-table td:nth-child(2) { width: 64px; }
+.recv-table th:nth-child(3), .recv-table td:nth-child(3), .recv-table th:nth-child(4), .recv-table td:nth-child(4) { width: 84px; padding-left: 4px; padding-right: 4px; }
+.recv-table td:first-child small { display: block; }
+.recv-table tr.muted input { opacity: .5; }
+@media (min-width: 640px) { .recv-table th:nth-child(n+3), .recv-table td:nth-child(n+3) { width: 120px; } .recv-table th:nth-child(2), .recv-table td:nth-child(2) { width: 90px; } }
+.row .btn.small { flex: none; }

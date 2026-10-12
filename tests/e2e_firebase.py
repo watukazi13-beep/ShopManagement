@@ -85,6 +85,14 @@ with sync_playwright() as p:
     d.get_by_role('button', name='Add item').click(); pg.wait_for_timeout(500)
     items = [v for k, v in fs().items() if k.startswith('items/')]
     check(any(i['name'] == 'Unga 2kg' and i['stock'] == 10 for i in items), 'item saved to Firestore')
+    # Owner orders 5 more Unga on a purchase order
+    pg.evaluate("location.hash='#/orders?tab=pos'"); pg.wait_for_timeout(400)
+    pg.click('[data-act=new-po]'); pg.wait_for_timeout(300)
+    r0 = dlg().locator('.line-row').first
+    r0.locator('.li-name').fill('Unga 2kg'); r0.locator('.li-name').dispatch_event('change'); r0.locator('.li-qty').fill('5'); r0.locator('.li-cost').fill('3200')
+    dlg().locator('[data-order]').click(); pg.wait_for_timeout(500)
+    po_docs = [v for k, v in fs().items() if k.startswith('pos/')]
+    check(len(po_docs) == 1 and po_docs[0]['status'] == 'ordered', 'owner purchase order saved to Firestore as ordered')
     pg.evaluate("location.hash='#/settings'"); pg.wait_for_timeout(400)
     pg.fill('#add-member [name=email]', 'Seller@Gmail.com'); pg.select_option('#add-member [name=role]', 'staff')
     pg.click('#add-member button'); pg.wait_for_timeout(500)
@@ -110,6 +118,8 @@ with sync_playwright() as p:
     check(pg.locator('.hero').count() == 1, 'seller sent back to Home when opening Money')
     pg.evaluate("location.hash='#/stock'"); pg.wait_for_timeout(300)
     check(pg.locator('[data-act=new]').count() == 0 and 'Cost' not in pg.locator('thead').inner_text(), 'seller cannot add items or see cost')
+    pg.click('[data-f=incoming]'); pg.wait_for_timeout(300)
+    check(pg.locator('[data-incoming]').count() == 1 and pg.locator('[data-recv]').count() == 0, 'seller sees the incoming order but cannot receive it by default')
     pg.evaluate("location.hash='#/sell'"); pg.wait_for_timeout(300)
     pg.locator('.tile', has_text='Unga').click(); pg.locator('.tile', has_text='Unga').click()
     pg.click('#cart-bar'); pg.wait_for_timeout(200)
@@ -133,6 +143,20 @@ with sync_playwright() as p:
     sign_in(OWNER)
     check('8,000' in pg.locator('.hero-figure').inner_text(), 'owner sees today’s sales including the seller’s')
     check('1,600' in pg.locator('.hero-sub').inner_text(), 'owner sees gross profit TSh 1,600')
+    # Owner lets sellers receive deliveries; the seller receives the order
+    pg.evaluate("location.hash='#/settings'"); pg.wait_for_timeout(300)
+    pg.check('#shop-form [name=staffCanReceive]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(400)
+    check(fs()['meta/settings'].get('staffCanReceive') is True, 'owner allows sellers to receive deliveries')
+    sign_out(); sign_in(SELLER)
+    pg.evaluate("location.hash='#/stock'"); pg.wait_for_timeout(300); pg.click('[data-f=incoming]'); pg.wait_for_timeout(300)
+    pg.locator('[data-recv]').first.click(); pg.wait_for_timeout(300)
+    dlg().get_by_role('button', name='Receive into stock').click(); pg.wait_for_timeout(600)
+    unga = [v for k, v in fs().items() if k.startswith('items/') and v['name'] == 'Unga 2kg'][0]
+    po_doc = [v for k, v in fs().items() if k.startswith('pos/')][0]
+    check(unga['stock'] == 13 and po_doc['status'] == 'received', f"seller received the delivery: Unga 8 + 5 = {unga['stock']}, PO {po_doc['status']}")
+    denied = pg.evaluate('window.__fsDenied')
+    check(denied == [], f'no writes refused while the seller received: {denied}')
+    sign_out(); sign_in(OWNER)
     # Owner removes the seller
     pg.evaluate("location.hash='#/settings'"); pg.wait_for_timeout(300)
     pg.locator('[data-remove="seller@gmail.com"]').click(); pg.wait_for_timeout(200)

@@ -153,7 +153,20 @@ const roundUpTo = (q, pack) => {
  *  - target level  = your maximum, or enough stock for lead time + cover days
  *  - suggested qty = target − current stock (rounded up to the pack size) when stock is at/below the reorder point
  */
-export function reorderPlan(items, sales, settings = {}, now = Date.now()) {
+/** Quantity of each item still to arrive on purchase orders that were sent (ordered or partly received). */
+export function onOrderQty(pos = []) {
+  const out = {};
+  for (const po of pos) {
+    if (po.status !== 'ordered' && po.status !== 'partial') continue;
+    for (const l of po.lines || []) {
+      const left = num(l.qty) - num(l.received);
+      if (left > 0) out[l.itemId] = (out[l.itemId] || 0) + left;
+    }
+  }
+  return out;
+}
+
+export function reorderPlan(items, sales, settings = {}, now = Date.now(), onOrder = {}) {
   const windowDays = num(settings.windowDays) || 30;
   const leadDays = num(settings.leadDays) || 7;
   const coverDays = num(settings.coverDays) || 30;
@@ -169,17 +182,21 @@ export function reorderPlan(items, sales, settings = {}, now = Date.now()) {
       const target = num(item.maxStock) > 0
         ? num(item.maxStock)
         : Math.max(Math.ceil(avgDaily * (leadDays + coverDays)), minStock * 2, reorderPoint + 1);
+      const ordered = num(onOrder[item.id]);
       let status = 'ok';
       if (stock <= 0) status = 'out';
       else if (reorderPoint > 0 && stock <= reorderPoint) status = 'low';
       const needs = status !== 'ok';
-      const suggestQty = needs ? roundUpTo(Math.max(target - stock, 1), item.packSize) : 0;
+      // What is already on a sent purchase order counts towards the fill-up, so nothing is ordered twice.
+      const gap = Math.max(target - stock, 1) - ordered;
+      const suggestQty = needs && gap > 0 ? roundUpTo(gap, item.packSize) : 0;
+      if (needs && ordered > 0 && suggestQty === 0) status = 'onorder';
       const daysLeft = avgDaily > 0 ? Math.max(0, stock) / avgDaily : null;
-      return { item, stock, avgDaily, reorderPoint, target, maxSet: num(item.maxStock) > 0, status, suggestQty, daysLeft };
+      return { item, stock, avgDaily, reorderPoint, target, maxSet: num(item.maxStock) > 0, onOrder: ordered, status, suggestQty, daysLeft };
     })
     .sort((a, b) => rank(a) - rank(b) || (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9));
 }
-const rank = (p) => (p.status === 'out' ? 0 : p.status === 'low' ? 1 : 2);
+const rank = (p) => ({ out: 0, low: 1, onorder: 2 }[p.status] ?? 3);
 
 /** Group items needing stock into one request for quotation per supplier. */
 export function draftRfqs(plan, suppliers = [], { includeAll = false } = {}) {
@@ -187,7 +204,7 @@ export function draftRfqs(plan, suppliers = [], { includeAll = false } = {}) {
   const groups = {};
   for (const p of plan) {
     if (!includeAll && p.suggestQty <= 0) continue;
-    const qty = p.suggestQty > 0 ? p.suggestQty : roundUpTo(Math.max(p.target - p.stock, 1), p.item.packSize);
+    const qty = p.suggestQty > 0 ? p.suggestQty : roundUpTo(Math.max(p.target - p.stock - num(p.onOrder), 1), p.item.packSize);
     const sid = sup[p.item.supplierId] ? p.item.supplierId : '';
     (groups[sid] ||= []).push({
       itemId: p.item.id,

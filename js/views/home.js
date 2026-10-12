@@ -1,8 +1,8 @@
 import { store } from '../store.js';
 import { daySummary, profitAndLoss, monthKey, monthLabel } from '../calc.js';
-import { esc, fmt, fmtQty, fmtTime, icon, statusPill, emptyState } from '../ui.js';
+import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
 import { showReceipt } from './sell.js';
-import { openPurchaseForm } from './orders.js';
+import { openPurchaseForm, isLate } from './orders.js';
 import { openExpenseForm } from './money.js';
 
 export default {
@@ -72,6 +72,18 @@ export default {
           ` : `<p class="muted">${store.data.items.length ? 'All items are above their reorder level.' : 'Alerts appear here when items run low.'}</p>`}
           ${'Notification' in window && Notification.permission === 'default' ? `<p class="small notify-hint"><button class="link" data-act="notify">Turn on phone alerts</button> to be told when stock runs low.</p>` : ''}
         </section>
+
+        ${(() => {
+          const incoming = store.openPos().sort((a, b) => (a.expectedTs || 0) - (b.expectedTs || 0));
+          if (!incoming.length) return '';
+          const late = incoming.filter(isLate).length;
+          return `<section class="card">
+            <div class="card-head"><h2>Expected deliveries ${late ? `<span class="count bad">${late} late</span>` : ''}</h2><a class="link" href="#/stock?filter=incoming">Receive</a></div>
+            <ul class="rows">${incoming.slice(0, 4).map((po) => `
+              <li class="row"><div class="grow"><b>${esc(po.supplierName)}</b><small>${esc(po.no)} · ${po.lines.length} item${po.lines.length === 1 ? '' : 's'}</small></div>
+              <span class="${isLate(po) ? 'warn-text' : 'muted'} small">${isLate(po) ? 'was due ' : 'due '}${fmtDate(po.expectedTs)}</span></li>`).join('')}</ul>
+          </section>`;
+        })()}
 
         <section class="card">
           <div class="card-head"><h2>Recent sales</h2>${store.can('reports') ? '<a class="link" href="#/money?tab=sales">All sales</a>' : ''}</div>

@@ -34,6 +34,13 @@ service cloud.firestore {
     function isBoss() {
       return isMember() && myRole() in ['owner', 'manager'];
     }
+    // Owner setting: sellers may receive deliveries into stock.
+    function sellersReceive() {
+      return isMember() && get(/databases/$(database)/documents/meta/settings).data.get('staffCanReceive', false) == true;
+    }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
 
     // Access list: owner + allowed emails.
     match /meta/access {
@@ -59,8 +66,9 @@ service cloud.firestore {
       allow read: if isMember();
       allow create, delete: if isBoss();
       // Sellers may only change stock levels (when they record a sale).
-      allow update: if isBoss() || (isMember()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'updatedAt']));
+      allow update: if isBoss()
+        || (isMember() && onlyChanges(['stock', 'updatedAt']))
+        || (sellersReceive() && onlyChanges(['stock', 'updatedAt', 'cost', 'lastCost', 'updatedBy']));
     }
 
     match /sales/{id} {
@@ -70,9 +78,24 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
+    // Purchase orders: owners and managers create them; receiving updates what arrived.
+    match /pos/{id} {
+      allow read: if isMember();
+      allow create, delete: if isBoss();
+      allow update: if isBoss()
+        || (sellersReceive() && onlyChanges(['lines', 'status', 'closedShort', 'receivedAt', 'updatedAt', 'updatedBy']));
+    }
+
+    // Deliveries received into stock.
+    match /purchases/{id} {
+      allow read: if isMember();
+      allow create: if isBoss() || sellersReceive();
+      allow update, delete: if isBoss();
+    }
+
     match /{col}/{id} {
-      allow read: if isMember() && col in ['suppliers', 'rfqs', 'purchases', 'adjustments', 'expenses'];
-      allow write: if isBoss() && col in ['suppliers', 'rfqs', 'purchases', 'adjustments', 'expenses'];
+      allow read: if isMember() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses'];
+      allow write: if isBoss() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses'];
     }
   }
 }

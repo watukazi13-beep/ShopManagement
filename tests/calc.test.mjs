@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
+import { onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
 
 // Average cost: 10 @ 1000 + 10 @ 1200 = 1100
 assert.equal(averageCost(10, 1000, 10, 1200), 1100);
@@ -128,5 +128,22 @@ assert.equal(penRfq.maxSet, true);
 assert.equal(reorderPlan([{ id: 'b', name: 'Bahasha A4', stock: -143, minStock: 10, maxStock: 200 }], [], {}, now)[0].suggestQty, 343);
 // No maximum → flagged
 assert.equal(reorderPlan([{ id: 'n', name: 'X', stock: 1, minStock: 5 }], [], {}, now)[0].maxSet, false);
+
+// Purchase orders: what is still to come counts as on order, and is not ordered again
+const pos = [
+  { status: 'ordered', lines: [{ itemId: 'cp', qty: 17, received: 0 }] },
+  { status: 'partial', lines: [{ itemId: 'cp', qty: 10, received: 4 }, { itemId: 'x', qty: 5, received: 5 }] },
+  { status: 'draft', lines: [{ itemId: 'cp', qty: 99 }] },
+  { status: 'received', lines: [{ itemId: 'cp', qty: 50, received: 40 }] },
+];
+assert.deepEqual(onOrderQty(pos), { cp: 23 });
+const covered = reorderPlan([{ id: 'cp', name: 'Correction pen', stock: 3, minStock: 5, maxStock: 20 }], [], {}, now, { cp: 17 })[0];
+assert.equal(covered.status, 'onorder');
+assert.equal(covered.suggestQty, 0);
+assert.equal(covered.onOrder, 17);
+const partly = reorderPlan([{ id: 'cp', name: 'Correction pen', stock: 3, minStock: 5, maxStock: 20 }], [], {}, now, { cp: 10 })[0];
+assert.equal(partly.status, 'low');
+assert.equal(partly.suggestQty, 7);
+assert.equal(draftRfqs([covered]).length, 0);
 
 console.log('All calculation tests passed');

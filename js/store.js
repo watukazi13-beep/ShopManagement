@@ -1,6 +1,6 @@
 // App state + every action that changes data.
 import {
-  DAY, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan,
+  DAY, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -18,10 +18,12 @@ export const DEFAULT_SETTINGS = {
   rfqNote: 'Please send us your best prices and delivery time for the items below.',
   expenseCategories: ['Rent', 'Salaries', 'Electricity', 'Water', 'Transport', 'Airtime & Internet', 'Taxes & Licences', 'Repairs', 'Other'],
   payMethods: ['Cash', 'M-Pesa', 'Tigo Pesa', 'Airtel Money', 'Card', 'Credit'],
+  staffCanReceive: false,
+  poNote: 'Please supply the items below. Quote this order number on your delivery note and invoice.',
 };
 
 const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses'];
-const MASTER = ['items', 'suppliers', 'rfqs'];
+const MASTER = ['items', 'suppliers', 'rfqs', 'pos'];
 
 export const store = {
   backend: null,
@@ -32,7 +34,7 @@ export const store = {
   pending: false,
   online: navigator.onLine,
   since: 0,
-  data: { items: [], suppliers: [], rfqs: [], sales: [], purchases: [], adjustments: [], expenses: [] },
+  data: { items: [], suppliers: [], rfqs: [], pos: [], sales: [], purchases: [], adjustments: [], expenses: [] },
   settings: { ...DEFAULT_SETTINGS },
   _loaded: new Set(),
   _subs: new Set(),
@@ -48,13 +50,16 @@ export const store = {
     const r = this.role;
     if (r === 'owner') return true;
     if (r === 'manager') return what !== 'users';
+    if (what === 'receive') return !!this.settings.staffCanReceive;
     return ['sell', 'viewStock'].includes(what);
   },
 
   plan() {
-    return reorderPlan(this.activeItems(), this.data.sales, this.settings);
+    return reorderPlan(this.activeItems(), this.data.sales, this.settings, Date.now(), onOrderQty(this.data.pos));
   },
-  lowStock() { return this.plan().filter((p) => p.status !== 'ok'); },
+  /** Items that are low or out and not already covered by a sent purchase order. */
+  lowStock() { return this.plan().filter((p) => p.status === 'out' || p.status === 'low'); },
+  openPos() { return this.data.pos.filter((p) => p.status === 'ordered' || p.status === 'partial'); },
 
   /** Start listening to data once the user has access. */
   startData() {
@@ -218,7 +223,7 @@ export const store = {
   },
 
   // ---------- Stock in / adjustments ----------
-  receivePurchase({ supplierId = '', ref = '', ts = Date.now(), lines, paid = true, note = '', rfqId = '' }) {
+  receivePurchase({ supplierId = '', ref = '', ts = Date.now(), lines, paid = true, note = '', rfqId = '', poId = '', poNo = '', extraOps = [] }) {
     const merged = new Map();
     for (const l of lines) {
       if (!l.itemId || num(l.qty) <= 0) continue;
@@ -242,11 +247,94 @@ export const store = {
     const sup = this.supplier(supplierId);
     ops.push({
       type: 'set', col: 'purchases', id,
-      data: { no: docNo('P', ts), ts, date: dayKey(ts), supplierId, supplierName: sup?.name || '', ref, lines: outLines, total, paid, note, rfqId, by: this.user?.email || '' },
+      data: { no: docNo('P', ts), ts, date: dayKey(ts), supplierId, supplierName: sup?.name || '', ref, lines: outLines, total, paid, note, rfqId, poId, poNo, by: this.user?.email || '' },
     });
     if (rfqId) ops.push({ type: 'merge', col: 'rfqs', id: rfqId, data: { status: 'closed', purchaseId: id, ...this._stamp() } });
-    this.backend.write(ops);
+    this.backend.write([...ops, ...extraOps]);
     return id;
+  },
+
+  // ---------- Purchase orders ----------
+  _poLines(lines) {
+    const merged = new Map();
+    for (const l of lines) {
+      if (!l.itemId || num(l.qty) <= 0) continue;
+      const it = this.item(l.itemId) || {};
+      const m = merged.get(l.itemId) || { itemId: l.itemId, name: it.name || l.name, sku: it.sku || '', unit: it.unit || l.unit || 'pcs', qty: 0, cost: money(l.cost), received: num(l.received) };
+      m.qty += num(l.qty);
+      if (num(l.cost)) m.cost = money(l.cost);
+      merged.set(l.itemId, m);
+    }
+    return [...merged.values()];
+  },
+  /** Create (no id) or update a purchase order. Returns its id. */
+  savePo(po) {
+    const { id, data, isNew } = this.buildPo(po);
+    this.backend.write([{ type: isNew ? 'set' : 'merge', col: 'pos', id, data }]);
+    return id;
+  },
+  /** The stored form of a purchase order (also used to print it before the save syncs back). */
+  buildPo(po) {
+    const lines = this._poLines(po.lines || []);
+    const sup = this.supplier(po.supplierId);
+    const ts = po.ts || Date.now();
+    const id = po.id || this.backend.newId('pos');
+    const data = {
+      no: po.no || docNo('PO', ts), ts, date: dayKey(ts),
+      supplierId: po.supplierId || '', supplierName: sup?.name || po.supplierName || 'Any supplier',
+      expectedTs: num(po.expectedTs) || ts + num(this.settings.leadDays || 7) * DAY,
+      status: po.status || 'draft', lines,
+      total: money(lines.reduce((t, l) => t + l.qty * l.cost, 0)),
+      note: po.note ?? this.settings.poNote ?? '', rfqId: po.rfqId || '', auto: !!po.auto,
+      by: po.by || this.user?.email || '', ...this._stamp(),
+    };
+    if (po.orderedAt) data.orderedAt = po.orderedAt;
+    const isNew = !this.data.pos.some((x) => x.id === id);
+    return { id, data, isNew };
+  },
+  /** Draft one purchase order per supplier for everything low (fills up to maximum). */
+  generatePos({ auto = false, week = '' } = {}) {
+    const drafts = draftRfqs(this.plan(), this.data.suppliers);
+    return drafts.map((d) => this.savePo({
+      id: auto && week ? `auto-${week}-${d.supplierId || 'any'}` : undefined,
+      supplierId: d.supplierId, supplierName: d.supplierName, auto,
+      lines: d.lines.map((l) => ({ itemId: l.itemId, qty: l.qty, cost: l.lastCost })),
+    }));
+  },
+  poFromRfq(rfq) {
+    const id = this.savePo({ supplierId: rfq.supplierId, rfqId: rfq.id, lines: rfq.lines.map((l) => ({ itemId: l.itemId, qty: l.qty, cost: l.quotedCost || l.lastCost })) });
+    this.backend.write([{ type: 'merge', col: 'rfqs', id: rfq.id, data: { status: 'ordered', poId: id, ...this._stamp() } }]);
+    return id;
+  },
+  setPoStatus(po, status) {
+    const extra = status === 'ordered' && !po.orderedAt ? { orderedAt: Date.now() } : {};
+    this.backend.write([{ type: 'merge', col: 'pos', id: po.id, data: { status, ...extra, ...this._stamp() } }]);
+  },
+  deletePo(id) { this.backend.write([{ type: 'delete', col: 'pos', id }]); },
+  /**
+   * Receive (part of) a purchase order. receipts: [{ itemId, qty, cost }].
+   * Stock and average cost update at once; anything not delivered stays on order
+   * unless closeShort is set.
+   */
+  receivePo(po, receipts, { ts = Date.now(), ref = '', paid = false, closeShort = false, note = '' } = {}) {
+    const got = new Map(receipts.filter((r) => num(r.qty) > 0).map((r) => [r.itemId, r]));
+    if (!got.size && !closeShort) throw new Error('Enter how many of each item arrived');
+    const lines = po.lines.map((l) => {
+      const r = got.get(l.itemId);
+      return r ? { ...l, received: num(l.received) + num(r.qty), cost: money(r.cost || l.cost) } : l;
+    });
+    const complete = lines.every((l) => num(l.received) >= num(l.qty));
+    const status = complete || closeShort ? 'received' : 'partial';
+    const poOp = {
+      type: 'merge', col: 'pos', id: po.id,
+      data: { lines, status, closedShort: !complete && closeShort, ...(status === 'received' ? { receivedAt: Date.now() } : {}), ...this._stamp() },
+    };
+    if (!got.size) { this.backend.write([poOp]); return null; }
+    return this.receivePurchase({
+      supplierId: po.supplierId, ref, ts, paid, note, poId: po.id, poNo: po.no,
+      lines: [...got.values()].map((r) => ({ itemId: r.itemId, qty: num(r.qty), cost: num(r.cost) })),
+      extraOps: [poOp],
+    });
   },
   markPurchasePaid(p, paid) {
     this.backend.write([{ type: 'merge', col: 'purchases', id: p.id, data: { paid, ...this._stamp() } }]);
@@ -357,7 +445,7 @@ export const store = {
   _alertNewLows(before) {
     setTimeout(() => {
       for (const p of this.plan()) {
-        if (p.status === 'ok') continue;
+        if (p.status === 'ok' || p.status === 'onorder') continue;
         if (before.get(p.item.id) === p.status) continue;
         const msg = p.status === 'out' ? `${p.item.name} is OUT of stock` : `${p.item.name} is low: ${p.stock} ${p.item.unit || ''} left`;
         this._notify('Low stock', msg, '#/stock?filter=low');
