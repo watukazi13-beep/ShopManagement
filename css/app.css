@@ -481,3 +481,11 @@ code { font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-
 .recv-table tr.muted input { opacity: .5; }
 @media (min-width: 640px) { .recv-table th:nth-child(n+3), .recv-table td:nth-child(n+3) { width: 120px; } .recv-table th:nth-child(2), .recv-table td:nth-child(2) { width: 90px; } }
 .row .btn.small { flex: none; }
+
+/* ---------- Shops ---------- */
+.pick-list { display: grid; gap: 8px; margin: 8px 0 14px; }
+.pick-list .btn { justify-content: flex-start; text-align: left; }
+.pick-list .btn small { margin-left: auto; color: var(--muted); font-weight: 500; }
+#brand { min-width: 0; }
+#shop-caret .caret { width: 18px; height: 18px; margin-left: 2px; color: var(--muted); flex: none; }
+.mg-table td small { display: block; }

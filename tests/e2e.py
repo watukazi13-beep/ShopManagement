@@ -284,6 +284,7 @@ with sync_playwright() as p:
 
     # --- Purchase orders: order → on order in Stock → receive part → receive the rest
     def pos_(): return list(data(pg).get('pos', {}).values())
+    if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
     go('#/orders?tab=pos'); pg.click('[data-act=po-low]'); pg.wait_for_timeout(400)
     chalk_po = next((p for p in pos_() if any(l['name'] == 'Chalk' for l in p['lines'])), None)
     check(chalk_po is not None and chalk_po['status'] == 'draft', 'Fill from low stock drafts a purchase order')

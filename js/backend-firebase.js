@@ -27,6 +27,10 @@ export async function createFirebaseBackend(config) {
   const unsubs = [];
   const pending = new Map();
   let errorHandler = () => {};
+  // Each shop's records live under shops/{shopId}/. A collection name starting
+  // with "/" is absolute (e.g. "/shops", "/platform").
+  let prefix = '';
+  const P = (col) => (col.startsWith('/') ? col.slice(1) : prefix + col);
 
   const toDoc = (snap) => ({ ...snap.data(), id: snap.id });
 
@@ -57,6 +61,34 @@ export async function createFirebaseBackend(config) {
 
     onError(fn) { errorHandler = fn; },
 
+    /** Point every later read and write at one shop (null = the old single-shop layout). */
+    setShop(shopId) { prefix = shopId ? `shops/${shopId}/` : ''; },
+
+    /** Live-watch one document: cb(data | null, fromCache). */
+    watchDoc(col, id, cb, onErr) {
+      const u = F.onSnapshot(F.doc(db, P(col), id), (snap) => cb(snap.exists() ? { ...snap.data(), id: snap.id } : null, snap.metadata.fromCache), (e) => (onErr || errorHandler)(e));
+      unsubs.push(u);
+      return u;
+    },
+
+    /** Live-watch a collection, optionally filtered by one condition: cb(docs, fromCache). */
+    watchQuery(col, cond, cb, onErr) {
+      const ref = cond ? F.query(F.collection(db, P(col)), F.where(cond[0], cond[1], cond[2])) : F.collection(db, P(col));
+      const u = F.onSnapshot(ref, (snap) => cb(snap.docs.map(toDoc), snap.metadata.fromCache), (e) => (onErr || errorHandler)(e));
+      unsubs.push(u);
+      return u;
+    },
+
+    async getDoc(col, id) {
+      const snap = await F.getDoc(F.doc(db, P(col), id));
+      return snap.exists() ? { ...snap.data(), id: snap.id } : null;
+    },
+
+    async getAll(col) {
+      const snap = await F.getDocs(F.collection(db, P(col)));
+      return snap.docs.map(toDoc);
+    },
+
     /** Live-watch the access document (owner + allowed people). */
     watchAccess(cb, onErr) {
       const u = F.onSnapshot(
@@ -75,10 +107,10 @@ export async function createFirebaseBackend(config) {
     watch(specs, onData, onSync) {
       for (const { col, since, docId } of specs) {
         const ref = docId
-          ? F.doc(db, col, docId)
+          ? F.doc(db, P(col), docId)
           : since
-            ? F.query(F.collection(db, col), F.where('ts', '>=', since))
-            : F.collection(db, col);
+            ? F.query(F.collection(db, P(col)), F.where('ts', '>=', since))
+            : F.collection(db, P(col));
         const key = docId ? `${col}/${docId}` : col;
         const u = F.onSnapshot(
           ref,
@@ -95,7 +127,7 @@ export async function createFirebaseBackend(config) {
       }
     },
 
-    newId(col) { return F.doc(F.collection(db, col)).id; },
+    newId(col) { return F.doc(F.collection(db, P(col))).id; },
 
     /**
      * Apply several changes together. Not awaited for the server, so it works
@@ -105,18 +137,21 @@ export async function createFirebaseBackend(config) {
     write(ops) {
       const batch = F.writeBatch(db);
       for (const op of ops) {
-        const ref = F.doc(db, op.col, op.id);
+        const ref = F.doc(db, P(op.col), op.id);
         if (op.type === 'set') batch.set(ref, op.data);
         else if (op.type === 'merge') batch.set(ref, op.data, { merge: true });
         else if (op.type === 'delete') batch.delete(ref);
+        else if (op.type === 'update') batch.update(ref, op.data); // replaces whole fields (maps included)
         else if (op.type === 'incr') batch.update(ref, { [op.field]: F.increment(op.by), updatedAt: Date.now(), ...(op.data || {}) });
       }
-      batch.commit().catch((e) => errorHandler(e));
+      const done = batch.commit();
+      done.catch((e) => errorHandler(e));
+      return done;
     },
 
     /** One-off read of older records (for reports on past months). */
     async fetchRange(col, from, to) {
-      const q = F.query(F.collection(db, col), F.where('ts', '>=', from), F.where('ts', '<', to));
+      const q = F.query(F.collection(db, P(col)), F.where('ts', '>=', from), F.where('ts', '<', to));
       const snap = await F.getDocs(q);
       return snap.docs.map(toDoc);
     },

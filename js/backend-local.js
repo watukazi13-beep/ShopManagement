@@ -39,7 +39,7 @@ export function createLocalBackend() {
       for (const op of ops) {
         const c = (data[op.col] ||= {});
         if (op.type === 'set') c[op.id] = structuredClone(op.data);
-        else if (op.type === 'merge') c[op.id] = { ...(c[op.id] || {}), ...structuredClone(op.data) };
+        else if (op.type === 'merge' || op.type === 'update') c[op.id] = { ...(c[op.id] || {}), ...structuredClone(op.data) };
         else if (op.type === 'delete') delete c[op.id];
         else if (op.type === 'incr' && c[op.id]) {
           c[op.id] = { ...c[op.id], ...(op.data || {}), [op.field]: (Number(c[op.id][op.field]) || 0) + op.by, updatedAt: Date.now() };
@@ -48,6 +48,12 @@ export function createLocalBackend() {
       save();
       emit();
     },
+    // Trial mode is one shop on one device; these exist so shared code can call them.
+    setShop() {},
+    async getDoc(col, id) { const d = data[col.replace(/^\//, '')]?.[id]; return d ? { ...d, id } : null; },
+    async getAll(col) { return Object.entries(data[col.replace(/^\//, '')] || {}).map(([id, d]) => ({ ...d, id })); },
+    watchDoc(col, id, cb) { setTimeout(async () => cb(await this.getDoc(col, id), false), 0); return () => {}; },
+    watchQuery(col, cond, cb) { setTimeout(async () => cb(await this.getAll(col), false), 0); return () => {}; },
     async fetchRange(col, from, to) {
       return docs(col).filter((d) => d.ts >= from && d.ts < to);
     },

@@ -9,14 +9,16 @@ import stock from './views/stock.js';
 import orders from './views/orders.js';
 import money from './views/money.js';
 import settings, { openConnect } from './views/settings.js';
+import manage, { openCreateShop, openShopSwitcher } from './views/manage.js';
 
-const VIEWS = { home, sell, stock, orders, money, settings };
+const VIEWS = { home, sell, stock, orders, money, settings, manage };
 const NAV = [
   ['home', 'Home', 'home'],
   ['sell', 'Sell', 'sell'],
   ['stock', 'Stock', 'stock'],
   ['orders', 'Orders', 'orders', 'orders'],
   ['money', 'Money', 'money', 'reports'],
+  ['manage', 'All shops', 'shops', 'manage'],
 ];
 
 const root = document.getElementById('app');
@@ -56,20 +58,63 @@ function showSignIn(error = '') {
   };
 }
 
-function showClaim() {
-  gate('Set up your shop', `
-    <p>No one owns this shop yet. Signed in as <b>${esc(store.user.email)}</b>.</p>
-    <p>Make this account the owner? You can then give access to other people from Settings.</p>
-    <button class="btn primary big block" id="g-claim">Yes, I am the owner</button>
+function showUpgrade() {
+  gate('Upgrade to multiple shops', `
+    <p>This version lets you run several shops. Your current shop moves into it as <b>shop 1</b>, with all its items, sales and records. Nothing is lost.</p>
+    <p>You (<b>${esc(store.user.email)}</b>) become <b>management</b>: you can create shops and choose their owners.</p>
+    <button class="btn primary big block" id="g-up">Upgrade now</button>
+    <p class="muted small" id="g-up-msg"></p>`);
+  root.querySelector('#g-up').onclick = async (e) => {
+    e.target.disabled = true;
+    const msg = root.querySelector('#g-up-msg');
+    try {
+      const r = await store.migrateLegacy((t) => { msg.textContent = t; });
+      localStorage.setItem('shop-id', r.id);
+      msg.textContent = `Done — ${r.records} records moved.`;
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      msg.textContent = 'The upgrade stopped: ' + friendly(err) + ' Check your internet connection and try again.';
+      e.target.disabled = false;
+    }
+  };
+}
+
+function showSetupManagement() {
+  gate('Set up Shop Manager', `
+    <p>You are the first person here. Signed in as <b>${esc(store.user.email)}</b>.</p>
+    <p>Become <b>management</b>? You will create shops and choose who owns and works in each one.</p>
+    <button class="btn primary big block" id="g-mgmt">Yes, set me up as management</button>
     <button class="btn ghost block" id="g-out">Use a different account</button>`);
-  root.querySelector('#g-claim').onclick = () => { store.claimShop(); };
+  root.querySelector('#g-mgmt').onclick = async (e) => { e.target.disabled = true; try { await store.claimManagement(); } catch (err) { toast(friendly(err), { kind: 'err' }); e.target.disabled = false; } };
   root.querySelector('#g-out').onclick = signOut;
+}
+
+function showFirstShop() {
+  gate('Create your first shop', `<p>You are management. Create a shop to start selling — you can add more shops later.</p>
+    <button class="btn primary big block" id="g-new">Create a shop</button>`);
+  root.querySelector('#g-new').onclick = () => openCreateShop({ onCreated: (id) => switchShop(id) });
+}
+
+function showShopPicker() {
+  gate('Choose a shop', `
+    <div class="pick-list">${store.shops.map((s) => `<button class="btn ghost block" data-shop="${s.id}">${icon('shops')}${esc(s.name)}<small>${esc(roleName(store.roleIn(s)))}</small></button>`).join('')}</div>
+    ${store.isAdmin ? `<button class="btn primary block" id="g-new">${icon('plus')}Create a shop</button>` : ''}`);
+  root.querySelectorAll('[data-shop]').forEach((b) => { b.onclick = () => switchShop(b.dataset.shop); });
+  root.querySelector('#g-new')?.addEventListener('click', () => openCreateShop({ onCreated: (id) => switchShop(id) }));
+}
+const roleName = (r) => ({ owner: 'Owner', manager: 'Manager', staff: 'Seller' }[r] || '');
+
+/** Open another shop: everything reloads for that shop. */
+export function switchShop(id) {
+  localStorage.setItem('shop-id', id);
+  history.replaceState(null, '', '#/home');
+  location.reload();
 }
 
 function showNoAccess() {
   gate('No access yet', `
-    <p><b>${esc(store.user?.email)}</b> is not allowed into this shop.</p>
-    <p>Ask the owner to add this email in <b>Settings → People with access</b>, then open the app again.</p>
+    <p><b>${esc(store.user?.email)}</b> has not been given access to a shop.</p>
+    <p>Ask the shop owner to add this email in <b>Settings → People with access</b>, then tap Check again.</p>
     <button class="btn primary block" id="g-retry">Check again</button>
     <button class="btn ghost block" id="g-out">Sign in with another account</button>`);
   root.querySelector('#g-retry').onclick = () => location.reload();
@@ -102,7 +147,7 @@ function showShell() {
   const links = NAV.filter(([, , , perm]) => !perm || store.can(perm));
   root.innerHTML = `
     <header class="topbar">
-      <a href="#/home" class="brand"><span class="logo sm">${icon('stock')}</span><span id="shop-name"></span></a>
+      <a href="#/home" class="brand" id="brand"><span class="logo sm">${icon('stock')}</span><span id="shop-name"></span><span id="shop-caret"></span></a>
       <span class="sync" id="sync" role="status"></span>
       <a href="#/settings" class="icon-btn" aria-label="Settings">${icon('settings')}</a>
     </header>
@@ -112,13 +157,17 @@ function showShell() {
       <p class="nav-credit">Made by ${esc(MAKER)}<br>Author: ${esc(AUTHOR)}</p>
     </nav>
     <main id="view" class="view" tabindex="-1"></main>`;
+  document.getElementById('brand').addEventListener('click', (e) => {
+    if (store.mode === 'firebase' && (store.shops.length > 1 || store.isAdmin)) { e.preventDefault(); openShopSwitcher(switchShop); }
+  });
   route();
   paintChrome();
 }
 
 function paintChrome() {
   if (!shell) return;
-  document.getElementById('shop-name').textContent = store.settings.shopName || 'My Shop';
+  document.getElementById('shop-name').textContent = store.settings.shopName || store.shop?.name || 'My Shop';
+  document.getElementById('shop-caret').innerHTML = store.mode === 'firebase' && (store.shops.length > 1 || store.isAdmin) ? icon('down', 'caret') : '';
   document.title = store.settings.shopName || 'Shop Manager';
   const sync = document.getElementById('sync');
   const [cls, text] = store.mode === 'local' ? ['local', 'This device only']
@@ -199,36 +248,8 @@ async function boot() {
     else toast(friendly(e), { kind: 'err' });
   });
 
-  let started = false;
-  let accessUnsub = null;
-  store.backend.onUser((user) => {
-    accessUnsub?.();
-    if (!user) { store.user = null; return showSignIn(); }
-    store.user = user;
-    showWaiting('Checking access…');
-    accessUnsub = store.backend.watchAccess(
-      (acc, fromCache) => {
-        store.access = acc;
-        if (!acc) {
-          if (fromCache && navigator.onLine) return; // wait for the server answer
-          if (fromCache) return showWaiting('Connect to the internet to finish setting up.');
-          return showClaim();
-        }
-        const role = acc.owner === user.uid ? 'owner' : acc.members?.[user.email];
-        if (!role) return showNoAccess();
-        const changed = store.role && store.role !== role;
-        store.role = role;
-        if (changed) { showShell(); return; }
-        if (!started) { started = true; store.startData(); }
-        if (!shell) showShell();
-        store.emit();
-      },
-      (e) => {
-        if (e?.code === 'permission-denied') showNoAccess();
-        else showSignIn(friendly(e));
-      },
-    );
-  });
+  if (store.mode === 'local') startTrialMode();
+  else startSyncedMode();
 
   let checked = false;
   store.subscribe(() => {
@@ -238,6 +259,93 @@ async function boot() {
       offerTrialData();
     }
   });
+}
+
+/** Trial mode: one shop on this device, the user is its owner. */
+function startTrialMode() {
+  store.backend.onUser((user) => {
+    store.user = user;
+    store.backend.watchAccess(() => {
+      store.role = 'owner';
+      store.startData();
+      showShell();
+    });
+  });
+}
+
+/**
+ * Synced mode: management (platform/admins) → the shops this person may open →
+ * the chosen shop. Every step is live, so changes made elsewhere apply at once.
+ */
+function startSyncedMode() {
+  let subs = [];
+  let shopsUnsub = null;
+  let watchingAsAdmin = null;
+  const stop = () => { subs.forEach((u) => u()); subs = []; shopsUnsub?.(); shopsUnsub = null; watchingAsAdmin = null; };
+
+  store.backend.onUser((user) => {
+    stop();
+    if (!user) { store.user = null; return showSignIn(); }
+    store.user = user;
+    showWaiting('Checking access…');
+    subs.push(store.backend.watchDoc('/platform', 'admins', (adm, fromCache) => {
+      if (!adm && fromCache && navigator.onLine) return; // wait for the server
+      store.admins = adm;
+      store.isAdmin = !!adm?.admins?.[user.email];
+      if (!adm) { if (fromCache) return showWaiting('Connect to the internet to finish setting up.'); return noManagementYet(); }
+      if (watchingAsAdmin !== store.isAdmin) watchShops();
+      else store.emit();
+    }, (e) => showSignIn(friendly(e))));
+  });
+
+  async function noManagementYet() {
+    // A shop from the single-shop version may exist at the top of the database.
+    let legacy = null;
+    try { legacy = await store.backend.getDoc('/meta', 'access'); } catch (e) {
+      if (e?.code === 'permission-denied') return showNoAccess(); // it exists, but this person is not its owner
+    }
+    if (legacy && !legacy.migratedTo) return legacy.owner === store.user.uid ? showUpgrade() : showNoAccess();
+    return showSetupManagement();
+  }
+
+  function watchShops() {
+    shopsUnsub?.();
+    watchingAsAdmin = store.isAdmin;
+    const cond = store.isAdmin ? null : ['memberEmails', 'array-contains', store.user.email];
+    shopsUnsub = store.backend.watchQuery('/shops', cond, (shops, fromCache) => {
+      store.shops = shops.sort((a, b) => a.name.localeCompare(b.name));
+      if (store.migrating) return; // the upgrade reloads the app when it is done
+      if (!shops.length && fromCache && navigator.onLine) return;
+      if (store.shop) return refreshOpenShop();
+      if (!shops.length) return store.isAdmin ? showFirstShop() : showNoAccess();
+      const saved = localStorage.getItem('shop-id');
+      const pick = shops.find((s) => s.id === saved) || (shops.length === 1 ? shops[0] : null);
+      if (!pick) return showShopPicker();
+      openShop(pick);
+    }, (e) => (e?.code === 'permission-denied' ? showNoAccess() : showSignIn(friendly(e))));
+  }
+
+  function openShop(shop) {
+    const role = store.roleIn(shop);
+    if (!role) return showNoAccess();
+    localStorage.setItem('shop-id', shop.id);
+    store.shop = shop;
+    store.role = role;
+    store.backend.setShop(shop.id);
+    store.startData();
+    showShell();
+  }
+
+  /** The open shop's people changed (or management did): update the role, or lock out. */
+  function refreshOpenShop() {
+    const fresh = store.shops.find((s) => s.id === store.shop.id);
+    const role = store.roleIn(fresh);
+    if (!fresh || !role) { store.shop = null; return showNoAccess(); }
+    const changed = role !== store.role;
+    store.shop = fresh;
+    store.role = role;
+    if (changed) showShell(); else store.emit();
+  }
 }
 
 /** After switching from trial mode to Firebase, offer to bring the trial data across. */

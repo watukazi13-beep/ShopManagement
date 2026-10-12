@@ -1,12 +1,13 @@
 rules_version = '2';
 
-// Security rules for Shop Manager.
+// Security rules for Shop Manager (made by Greenlight Stationeries).
 // Paste this whole file into Firebase console → Firestore Database → Rules → Publish.
 //
 // Who can do what:
-//   owner   – the first Google account that sets up the shop; can do everything
-//   manager – everything except managing people
-//   staff   – ("Seller" in the app) record sales and view stock only
+//   management – creates shops, assigns owners, sees every shop (platform/admins)
+//   owner      – everything in their shop, including adding managers and sellers
+//   manager    – everything in their shop except managing people
+//   staff      – ("Seller" in the app) record sales and view stock only
 // Anyone else is refused, even if they find the web address.
 
 service cloud.firestore {
@@ -18,84 +19,122 @@ service cloud.firestore {
     function myEmail() {
       return request.auth.token.email.lower();
     }
-    function access() {
-      return get(/databases/$(database)/documents/meta/access).data;
+    function adminsPath() {
+      return /databases/$(database)/documents/platform/admins;
     }
-    function isOwner() {
-      return signedIn() && access().owner == request.auth.uid;
-    }
-    function myRole() {
-      return isOwner() ? 'owner'
-        : (myEmail() in access().members ? access().members[myEmail()] : 'none');
-    }
-    function isMember() {
-      return signedIn() && exists(/databases/$(database)/documents/meta/access) && myRole() != 'none';
-    }
-    function isBoss() {
-      return isMember() && myRole() in ['owner', 'manager'];
-    }
-    // Owner setting: sellers may receive deliveries into stock.
-    function sellersReceive() {
-      return isMember() && get(/databases/$(database)/documents/meta/settings).data.get('staffCanReceive', false) == true;
+    function isAdmin() {
+      return signedIn() && exists(adminsPath()) && get(adminsPath()).data.admins.get(myEmail(), false) == true;
     }
     function onlyChanges(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
-    // Access list: owner + allowed emails.
+    // ---------- Management ----------
+    match /platform/admins {
+      allow read: if signedIn();
+      // The very first person to set up becomes management — or, if a single shop
+      // already exists from before, only that shop's owner can.
+      allow create: if signedIn() && !exists(adminsPath())
+        && request.resource.data.admins.keys().hasOnly([myEmail()])
+        && request.resource.data.admins[myEmail()] == true
+        && (!exists(/databases/$(database)/documents/meta/access)
+            || get(/databases/$(database)/documents/meta/access).data.owner == request.auth.uid);
+      // Management can add others, but cannot remove themselves.
+      allow update: if isAdmin() && request.resource.data.admins.get(myEmail(), false) == true;
+      allow delete: if false;
+    }
+
+    // ---------- Shops ----------
+    match /shops/{shopId} {
+      function shop() {
+        return get(/databases/$(database)/documents/shops/$(shopId)).data;
+      }
+      function role() {
+        return isAdmin() ? 'owner'
+          : (myEmail() in shop().owners ? 'owner' : shop().members.get(myEmail(), 'none'));
+      }
+      function isMember() {
+        return signedIn() && exists(/databases/$(database)/documents/shops/$(shopId)) && role() != 'none';
+      }
+      function isBoss() {
+        return isMember() && role() in ['owner', 'manager'];
+      }
+      function sellersReceive() {
+        return isMember() && get(/databases/$(database)/documents/shops/$(shopId)/meta/settings).data.get('staffCanReceive', false) == true;
+      }
+
+      // The shop itself: name, owners, members.
+      allow read: if isAdmin() || (signedIn() && myEmail() in resource.data.memberEmails);
+      allow create: if isAdmin();
+      // Owners manage managers and sellers; only management changes owners.
+      allow update: if isAdmin()
+        || (signedIn() && myEmail() in resource.data.owners
+            && request.resource.data.owners == resource.data.owners);
+      allow delete: if false;
+
+      match /meta/settings {
+        allow read: if isMember();
+        allow write: if isBoss();
+      }
+
+      match /items/{id} {
+        allow read: if isMember();
+        allow create, delete: if isBoss();
+        // Sellers may only change stock levels (when they record a sale or receive a delivery).
+        allow update: if isBoss()
+          || (isMember() && onlyChanges(['stock', 'updatedAt']))
+          || (sellersReceive() && onlyChanges(['stock', 'updatedAt', 'cost', 'lastCost', 'updatedBy']));
+      }
+
+      match /sales/{id} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.by == myEmail();
+        allow update: if isBoss();      // cancelling a sale
+        allow delete: if role() == 'owner';
+      }
+
+      match /pos/{id} {
+        allow read: if isMember();
+        allow create, delete: if isBoss();
+        allow update: if isBoss()
+          || (sellersReceive() && onlyChanges(['lines', 'status', 'closedShort', 'receivedAt', 'updatedAt', 'updatedBy']));
+      }
+
+      match /purchases/{id} {
+        allow read: if isMember();
+        allow create: if isBoss() || sellersReceive();
+        allow update, delete: if isBoss();
+      }
+
+      match /{col}/{id} {
+        allow read: if isMember() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'customers', 'payments', 'shifts', 'quotes', 'invoices', 'closings', 'tickets'];
+        allow write: if isBoss() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'customers', 'payments', 'shifts', 'quotes', 'invoices', 'closings', 'tickets'];
+      }
+    }
+
+    // ---------- Old single-shop layout (kept so it can be moved into shops/) ----------
+    function legacyAccess() {
+      return get(/databases/$(database)/documents/meta/access).data;
+    }
+    function legacyOwner() {
+      return signedIn() && legacyAccess().owner == request.auth.uid;
+    }
     match /meta/access {
       allow read: if signedIn() && (resource == null
         || resource.data.owner == request.auth.uid
         || myEmail() in resource.data.members);
-      // Only possible once: the first person to set up the shop becomes owner.
-      allow create: if signedIn()
-        && request.resource.data.owner == request.auth.uid
-        && request.resource.data.members.size() == 0;
-      allow update: if isOwner()
+      allow update: if legacyOwner()
         && request.resource.data.owner == resource.data.owner
         && request.resource.data.ownerEmail == resource.data.ownerEmail;
-      allow delete: if false;
+      allow create, delete: if false;
     }
-
     match /meta/settings {
-      allow read: if isMember();
-      allow write: if isBoss();
+      allow read: if legacyOwner();
+      allow write: if false;
     }
-
-    match /items/{id} {
-      allow read: if isMember();
-      allow create, delete: if isBoss();
-      // Sellers may only change stock levels (when they record a sale).
-      allow update: if isBoss()
-        || (isMember() && onlyChanges(['stock', 'updatedAt']))
-        || (sellersReceive() && onlyChanges(['stock', 'updatedAt', 'cost', 'lastCost', 'updatedBy']));
-    }
-
-    match /sales/{id} {
-      allow read: if isMember();
-      allow create: if isMember() && request.resource.data.by == myEmail();
-      allow update: if isBoss();      // cancelling a sale
-      allow delete: if isOwner();
-    }
-
-    // Purchase orders: owners and managers create them; receiving updates what arrived.
-    match /pos/{id} {
-      allow read: if isMember();
-      allow create, delete: if isBoss();
-      allow update: if isBoss()
-        || (sellersReceive() && onlyChanges(['lines', 'status', 'closedShort', 'receivedAt', 'updatedAt', 'updatedBy']));
-    }
-
-    // Deliveries received into stock.
-    match /purchases/{id} {
-      allow read: if isMember();
-      allow create: if isBoss() || sellersReceive();
-      allow update, delete: if isBoss();
-    }
-
     match /{col}/{id} {
-      allow read: if isMember() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses'];
-      allow write: if isBoss() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses'];
+      allow read: if legacyOwner() && col in ['items', 'suppliers', 'rfqs', 'pos', 'sales', 'purchases', 'adjustments', 'expenses'];
+      allow write: if false;
     }
   }
 }

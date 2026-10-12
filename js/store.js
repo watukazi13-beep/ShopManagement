@@ -1,6 +1,7 @@
 // App state + every action that changes data.
 import {
   DAY, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
+  stockValue, profitAndLoss, daySummary,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -30,6 +31,11 @@ export const store = {
   user: null,
   access: null,
   role: null, // 'owner' | 'manager' | 'staff'
+  // Multiple shops: management (platform/admins) creates shops; each shop has owners and members.
+  admins: null,
+  isAdmin: false,
+  shops: [],
+  shop: null,
   ready: false,
   pending: false,
   online: navigator.onLine,
@@ -47,6 +53,7 @@ export const store = {
   supplier(id) { return this.data.suppliers.find((s) => s.id === id); },
   activeItems() { return this.data.items.filter((i) => i.active !== false).sort((a, b) => a.name.localeCompare(b.name)); },
   can(what) {
+    if (what === 'manage') return this.isAdmin; // all shops: management only
     const r = this.role;
     if (r === 'owner') return true;
     if (r === 'manager') return what !== 'users';
@@ -428,6 +435,118 @@ export const store = {
   saveSettings(patch) {
     this.backend.write([{ type: 'merge', col: 'meta', id: 'settings', data: { ...patch, ...this._stamp() } }]);
   },
+  // ---------- Shops & management ----------
+  /** This user's role in a shop: management counts as owner everywhere. */
+  roleIn(shop) {
+    const e = this.user?.email;
+    if (!shop || !e) return null;
+    if (this.isAdmin) return 'owner';
+    if ((shop.owners || []).includes(e)) return 'owner';
+    return shop.members?.[e] || null;
+  },
+  claimManagement() {
+    return this.backend.write([{ type: 'set', col: '/platform', id: 'admins', data: { admins: { [this.user.email]: true }, createdAt: Date.now(), createdBy: this.user.email } }]);
+  },
+  setAdmin(email, on) {
+    const admins = { ...(this.admins?.admins || {}) };
+    const key = email.trim().toLowerCase();
+    if (on) admins[key] = true; else delete admins[key];
+    if (!admins[this.user.email]) throw new Error('You cannot remove yourself from management');
+    return this.backend.write([{ type: 'update', col: '/platform', id: 'admins', data: { admins, updatedAt: Date.now() } }]);
+  },
+  _shopPeople(owners, members) {
+    return { owners, members, memberEmails: [...new Set([...owners, ...Object.keys(members)])] };
+  },
+  /** Management: create a shop with an owner; optionally copy another shop's item list (stock starts at 0). */
+  async createShop({ name, ownerEmail, copyFrom = '' }) {
+    const owner = ownerEmail.trim().toLowerCase();
+    if (!name.trim()) throw new Error('Give the shop a name');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner)) throw new Error('Enter the owner’s email address');
+    const id = this.backend.newId('/shops');
+    await this.backend.write([{
+      type: 'set', col: '/shops', id,
+      data: { name: name.trim(), ...this._shopPeople([owner], {}), createdAt: Date.now(), createdBy: this.user.email },
+    }]);
+    const ops = [{ type: 'set', col: `/shops/${id}/meta`, id: 'settings', data: { shopName: name.trim(), ...this._stamp() } }];
+    if (copyFrom) {
+      const items = await this.backend.getAll(`/shops/${copyFrom}/items`);
+      for (const { id: itemId, ...it } of items) {
+        if (it.active === false) continue;
+        ops.push({ type: 'set', col: `/shops/${id}/items`, id: itemId, data: { ...it, stock: 0, supplierId: '', ...this._stamp({ createdAt: Date.now() }) } });
+      }
+    }
+    for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
+    return id;
+  },
+  /** Give someone a role in the current shop (role null removes them). Only management can make owners. */
+  setShopMember(email, role) {
+    const key = email.trim().toLowerCase();
+    const owners = (this.shop.owners || []).filter((e) => e !== key);
+    const members = { ...(this.shop.members || {}) };
+    delete members[key];
+    if (role === 'owner') {
+      if (!this.isAdmin) throw new Error('Only management can make someone an owner');
+      owners.push(key);
+    } else if (role) members[key] = role;
+    if (!owners.length) throw new Error('A shop needs at least one owner');
+    if (!this.isAdmin && owners.join() !== (this.shop.owners || []).join()) throw new Error('Only management can change owners');
+    return this.backend.write([{ type: 'update', col: '/shops', id: this.shop.id, data: { ...this._shopPeople(owners, members), updatedAt: Date.now() } }]);
+  },
+  renameShop(name) {
+    return this.backend.write([
+      { type: 'update', col: '/shops', id: this.shop.id, data: { name: name.trim(), updatedAt: Date.now() } },
+      { type: 'merge', col: 'meta', id: 'settings', data: { shopName: name.trim(), ...this._stamp() } },
+    ]);
+  },
+  /** Figures for the management overview, read straight from a shop. */
+  async shopSummary(shopId) {
+    const base = `/shops/${shopId}`;
+    const [from, to] = monthRange(monthKey());
+    const [items, sales, expenses, adjustments] = await Promise.all([
+      this.backend.getAll(`${base}/items`),
+      this.backend.fetchRange(`${base}/sales`, from, to),
+      this.backend.fetchRange(`${base}/expenses`, from, to),
+      this.backend.fetchRange(`${base}/adjustments`, from, to),
+    ]);
+    const active = items.filter((i) => i.active !== false);
+    const plan = reorderPlan(active, sales, {});
+    return {
+      items: active.length,
+      stock: stockValue(active),
+      lows: plan.filter((p) => p.status === 'out' || p.status === 'low').length,
+      today: daySummary(sales),
+      month: profitAndLoss({ sales, expenses, adjustments }, monthKey()),
+    };
+  },
+  /**
+   * One-time upgrade: the single shop stored at the top of the database becomes
+   * shop 1 under shops/, and this owner becomes management. The old copy is kept.
+   */
+  async migrateLegacy(onProgress = () => {}) {
+    // Absolute paths ("/…") throughout: the app must not switch into the new shop half-way.
+    this.migrating = true;
+    const legacy = await this.backend.getDoc('/meta', 'access');
+    const settings = (await this.backend.getDoc('/meta', 'settings')) || {};
+    await this.claimManagement();
+    const id = this.backend.newId('/shops');
+    const members = { ...(legacy?.members || {}) };
+    const name = settings.shopName && settings.shopName !== 'My Shop' ? settings.shopName : 'Greenlight Stationeries';
+    await this.backend.write([{ type: 'set', col: '/shops', id, data: { name, ...this._shopPeople([this.user.email], members), createdAt: Date.now(), createdBy: this.user.email, migratedFrom: 'single-shop' } }]);
+    const { id: _s, ...settingsData } = settings;
+    const ops = [{ type: 'set', col: `/shops/${id}/meta`, id: 'settings', data: { ...settingsData, shopName: name } }];
+    const cols = ['items', 'suppliers', 'rfqs', 'pos', 'sales', 'purchases', 'adjustments', 'expenses'];
+    let n = 0;
+    for (const col of cols) {
+      onProgress(`Moving ${col}…`);
+      const docs = await this.backend.getAll('/' + col);
+      for (const { id: docId, ...d } of docs) { ops.push({ type: 'set', col: `/shops/${id}/${col}`, id: docId, data: d }); n++; }
+    }
+    onProgress(`Saving ${n} records…`);
+    for (let i = 0; i < ops.length; i += 400) await this.backend.write(ops.slice(i, i + 400));
+    await this.backend.write([{ type: 'merge', col: '/meta', id: 'access', data: { migratedTo: id } }]);
+    return { id, records: n };
+  },
+
   claimShop() {
     this.backend.write([{
       type: 'set', col: 'meta', id: 'access',

@@ -4,11 +4,25 @@ const db = JSON.parse(localStorage.getItem(KEY) || '{}');
 const save = () => localStorage.setItem(KEY, JSON.stringify(db));
 const listeners = new Set();
 const user = () => JSON.parse(localStorage.getItem('fake-user') || 'null');
-function role() {
+function legacyRole() {
   const acc = db['meta/access']; const u = user();
   if (!u || !acc) return null;
   if (acc.owner === u.uid) return 'owner';
   return acc.members?.[u.email] || null;
+}
+const isAdmin = () => { const u = user(); return !!(u && db['platform/admins']?.admins?.[u.email]); };
+function shopRole(shopId) {
+  const u = user(); const sh = db[`shops/${shopId}`];
+  if (!u || !sh) return null;
+  if (isAdmin()) return 'owner';
+  if ((sh.owners || []).includes(u.email)) return 'owner';
+  return sh.members?.[u.email] || null;
+}
+/** Which shop a path belongs to, its role, and the collection inside it. */
+function scope(path) {
+  const seg = path.split('/');
+  if (seg[0] === 'shops' && seg.length > 2) return { shopId: seg[1], col: seg[2], id: seg[3], role: shopRole(seg[1]) };
+  return { shopId: null, col: seg[0], id: seg[1], role: legacyRole() };
 }
 const denied = () => Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
 window.__fsWrites = 0; window.__fsDenied = [];
@@ -23,26 +37,35 @@ export function doc(a, ...segs) {
   return { type: 'doc', path: segs.join('/'), id: segs[segs.length - 1] };
 }
 export function where(f, op, v) { return { f, op, v }; }
+export async function getDoc(ref) { return snap(ref); }
 export function query(c, ...w) { return { type: 'query', path: c.path, wheres: w }; }
 export function increment(n) { return { __inc: n }; }
 
 function snap(ref) {
-  const r = role();
   const meta = { fromCache: false, hasPendingWrites: false };
+  const u = user();
   if (ref.type === 'doc') {
     const d = db[ref.path];
     if (ref.path === 'meta/access') {
-      const u = user();
       if (!u) throw denied();
       if (d && !(d.owner === u.uid || (d.members || {})[u.email])) throw denied();
-    } else if (!r) throw denied();
+    } else if (ref.path === 'platform/admins') {
+      if (!u) throw denied();
+    } else if (/^shops\/[^/]+$/.test(ref.path)) {
+      if (!u || (!isAdmin() && !(d?.memberEmails || []).includes(u.email))) throw denied();
+    } else if (!scope(ref.path).role) throw denied();
     return { id: ref.id, exists: () => !!d, data: () => (d ? structuredClone(d) : undefined), metadata: meta };
   }
-  if (!r) throw denied();
+  const wheres = ref.wheres || [];
+  if (ref.path === 'shops') {
+    if (!u) throw denied();
+    if (!isAdmin() && !wheres.some((w) => w.f === 'memberEmails' && w.op === 'array-contains' && w.v === u.email)) throw denied();
+  } else if (!scope(ref.path + '/x').role) throw denied();
+  const depth = ref.path.split('/').length + 1;
   const docs = Object.entries(db)
-    .filter(([p]) => p.split('/')[0] === ref.path && p.split('/').length === 2)
-    .filter(([, d]) => (ref.wheres || []).every((w) => (w.op === '>=' ? d[w.f] >= w.v : w.op === '<' ? d[w.f] < w.v : true)))
-    .map(([p, d]) => ({ id: p.split('/')[1], data: () => structuredClone(d) }));
+    .filter(([p]) => p.startsWith(ref.path + '/') && p.split('/').length === depth)
+    .filter(([, d]) => wheres.every((w) => (w.op === '>=' ? d[w.f] >= w.v : w.op === '<' ? d[w.f] < w.v : w.op === 'array-contains' ? (d[w.f] || []).includes(w.v) : true)))
+    .map(([p, d]) => ({ id: p.split('/').pop(), data: () => structuredClone(d) }));
   return { docs, metadata: meta };
 }
 function fire(l) { try { l.next(snap(l.ref)); } catch (e) { listeners.delete(l); l.err?.(e); } }
@@ -57,15 +80,27 @@ export function onSnapshot(ref, a, b, c) {
 export async function getDocs(q) { return snap(q); }
 
 function allowed(kind, path, data, old) {
-  const r = role(); const col = path.split('/')[0]; const u = user();
-  if (path === 'meta/access') {
-    if (kind === 'set' && !old) return u && data.owner === u.uid && Object.keys(data.members || {}).length === 0;
-    return r === 'owner';
+  const u = user();
+  if (!u) return false;
+  if (path === 'platform/admins') {
+    if (kind === 'set' && !old) return Object.keys(data.admins || {}).join() === u.email && data.admins[u.email] === true && (!db['meta/access'] || db['meta/access'].owner === u.uid);
+    return isAdmin() && (data.admins ? data.admins[u.email] === true : true);
   }
+  if (/^shops\/[^/]+$/.test(path)) {
+    if (!old) return isAdmin();
+    if (isAdmin()) return true;
+    return (old.owners || []).includes(u.email) && (!data.owners || JSON.stringify(data.owners) === JSON.stringify(old.owners));
+  }
+  if (path === 'meta/access') {
+    if (kind === 'set' && !old) return data.owner === u.uid && Object.keys(data.members || {}).length === 0;
+    return legacyRole() === 'owner';
+  }
+  const { shopId, col, role: r } = scope(path);
+  if (!shopId) return false; // the old single-shop layout is read-only now
   if (!r) return false;
   if (r === 'owner' || r === 'manager') return true;
+  const recv = db[`shops/${shopId}/meta/settings`]?.staffCanReceive === true;
   if (col === 'sales' && kind === 'set' && !old) return data.by === u.email;
-  const recv = db['meta/settings']?.staffCanReceive === true;
   if (col === 'items' && kind === 'update') return Object.keys(data).every((k) => (recv ? ['stock', 'updatedAt', 'cost', 'lastCost', 'updatedBy'] : ['stock', 'updatedAt']).includes(k));
   if (col === 'pos' && kind === 'update' && recv) return Object.keys(data).every((k) => ['lines', 'status', 'closedShort', 'receivedAt', 'updatedAt', 'updatedBy'].includes(k));
   if (col === 'purchases' && kind === 'set' && !old) return recv;

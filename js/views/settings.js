@@ -13,7 +13,8 @@ export default {
       const s = store.settings;
       const boss = store.can('settings');
       const owner = store.can('users');
-      const members = Object.entries(store.access?.members || {}).sort();
+      const owners = store.shop?.owners || [];
+      const members = Object.entries(store.shop?.members || {}).sort();
       const notif = 'Notification' in window ? Notification.permission : 'unsupported';
       const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
       el.innerHTML = `
@@ -23,12 +24,13 @@ export default {
           <div class="card-head"><h2>Account</h2></div>
           <p>${store.mode === 'local'
             ? '<b>Trial mode.</b> Data is saved on this device only and does not sync. Connect Firebase to sync between devices and share with your team.'
-            : `Signed in as <b>${esc(store.user?.email)}</b> · ${esc(roleName(store.role))}`}</p>
+            : `Signed in as <b>${esc(store.user?.email)}</b> · ${esc(roleName(store.role))}${store.shop ? ` of <b>${esc(store.shop.name)}</b>` : ''}${store.isAdmin ? ' · Management' : ''}`}</p>
           <p class="muted small">${store.online ? (store.pending ? 'Online · uploading changes…' : 'Online · all changes synced') : 'Offline · changes are saved on this device and will sync when you reconnect'}</p>
           <div class="row-btns">
             ${standalone ? '' : `<button class="btn ghost" data-act="install">${icon('download')}Install app</button>`}
             ${notif === 'default' ? `<button class="btn ghost" data-act="notify">Turn on alerts</button>` : ''}
             ${store.mode === 'local' ? `<button class="btn primary" data-act="connect">${icon('cloud')}Connect Firebase</button>` : `<button class="btn ghost" data-act="signout">Sign out</button>`}
+            ${store.isAdmin ? `<a class="btn ghost" href="#/manage">${icon('shops')}All shops</a>` : ''}
           </div>
           ${notif === 'denied' ? '<p class="muted small">Alerts are blocked for this site in your browser settings.</p>' : ''}
         </section>
@@ -36,14 +38,14 @@ export default {
         ${owner && store.mode !== 'local' ? `
         <section class="card">
           <div class="card-head"><h2>People with access</h2></div>
-          <p class="muted small">Only these Google accounts can open your shop. Managers can do everything except manage people. Sellers can only sell and view stock.</p>
+          <p class="muted small">Only these Google accounts can open ${esc(store.shop?.name || 'this shop')}. Managers can do everything except manage people. Sellers can only sell and view stock.${store.isAdmin ? '' : ' Only management can change owners.'}</p>
           <ul class="rows">
-            <li class="row"><div class="grow"><b>${esc(store.access?.ownerEmail || store.user?.email)}</b><small>Owner</small></div></li>
+            ${owners.map((email) => `<li class="row"><div class="grow"><b>${esc(email)}</b><small>Owner</small></div>${store.isAdmin && owners.length > 1 ? `<button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button>` : ''}</li>`).join('')}
             ${members.map(([email, role]) => `<li class="row"><div class="grow"><b>${esc(email)}</b><small>${esc(roleName(role))}</small></div><button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button></li>`).join('')}
           </ul>
           <form class="inline-form" id="add-member">
             <input name="email" type="email" required placeholder="their.email@gmail.com" aria-label="Email">
-            <select name="role" aria-label="Role"><option value="staff">Seller</option><option value="manager">Manager</option></select>
+            <select name="role" aria-label="Role"><option value="staff">Seller</option><option value="manager">Manager</option>${store.isAdmin ? '<option value="owner">Owner</option>' : ''}</select>
             <button class="btn primary">Give access</button>
           </form>
         </section>` : ''}
@@ -106,8 +108,11 @@ export default {
       el.querySelector('#add-member')?.addEventListener('submit', (e) => {
         e.preventDefault();
         const v = Object.fromEntries(new FormData(e.target).entries());
-        store.setMember(v.email, v.role);
-        toast(`${v.email} can now sign in`);
+        try {
+          store.setShopMember(v.email, v.role).catch(() => {});
+          toast(`${v.email} can now sign in`);
+          e.target.reset();
+        } catch (err) { toast(err.message, { kind: 'err' }); }
       });
     };
 
@@ -128,7 +133,7 @@ export default {
         });
       }
       const rm = e.target.closest('[data-remove]')?.dataset.remove;
-      if (rm && await confirmBox(`Remove access for ${rm}?`, { ok: 'Remove', danger: true })) { store.setMember(rm, null); toast('Access removed'); }
+      if (rm && await confirmBox(`Remove access for ${rm}?`, { ok: 'Remove', danger: true })) { try { store.setShopMember(rm, null); toast('Access removed'); } catch (err) { toast(err.message, { kind: 'err' }); } }
     });
 
     // Don't redraw (and lose typing) while a form has unsaved edits.
