@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
+import { shiftExpected, onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
 
 // Average cost: 10 @ 1000 + 10 @ 1200 = 1100
 assert.equal(averageCost(10, 1000, 10, 1200), 1100);
@@ -145,5 +145,22 @@ const partly = reorderPlan([{ id: 'cp', name: 'Correction pen', stock: 3, minSto
 assert.equal(partly.status, 'low');
 assert.equal(partly.suggestQty, 7);
 assert.equal(draftRfqs([covered]).length, 0);
+
+// Shift cash: 20,000 opening + 5,000 cash sale − 1,000 cash refund + 2,000 customer payment + 3,000 in − 4,000 out = 25,000
+const sh = { by: 'a@x', ts: 1000, openingCash: 20000, moves: [{ type: 'in', amount: 3000 }, { type: 'out', amount: 4000 }] };
+const shSales = [
+  { by: 'a@x', ts: 1100, pay: 'Cash', total: 5000 },
+  { by: 'a@x', ts: 1200, pay: 'M-Pesa', total: 7000 },
+  { by: 'a@x', ts: 1300, pay: 'Credit', credit: true, total: 9000 },
+  { by: 'a@x', ts: 1400, pay: 'Cash', type: 'refund', total: -1000 },
+  { by: 'b@x', ts: 1500, pay: 'Cash', total: 99999 },
+  { by: 'a@x', ts: 900, pay: 'Cash', total: 88888 },
+  { by: 'a@x', ts: 1600, pay: 'Cash', total: 77777, voided: true },
+];
+const shOut = shiftExpected(sh, shSales, [{ by: 'a@x', ts: 1700, method: 'Cash', amount: 2000 }]);
+assert.equal(shOut.expected, 25000);
+assert.equal(shOut.cashSales, 5000);
+assert.equal(shOut.otherSales, 16000);
+assert.equal(shOut.count, 3);
 
 console.log('All calculation tests passed');

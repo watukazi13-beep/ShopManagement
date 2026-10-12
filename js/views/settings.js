@@ -80,6 +80,7 @@ export default {
           <label class="check"><input type="checkbox" name="autoMonthlyRfq" ${s.autoMonthlyRfq !== false ? 'checked' : ''}> Create quotation requests automatically at the start of each month</label>
           ${field('Message on quotation requests', `<textarea name="rfqNote" rows="2">${esc(s.rfqNote)}</textarea>`)}
           ${field('Message on purchase orders', `<textarea name="poNote" rows="2">${esc(s.poNote || '')}</textarea>`)}
+          <label class="check"><input type="checkbox" name="useShifts" ${s.useShifts ? 'checked' : ''}> Use shifts: count the cash drawer when opening and closing</label>
           <label class="check"><input type="checkbox" name="staffCanReceive" ${s.staffCanReceive ? 'checked' : ''}> Sellers can receive deliveries into stock (otherwise only owners and managers)</label>
           <h3>Lists</h3>
           ${field('Payment methods', `<input name="payMethods" value="${esc((s.payMethods || []).join(', '))}">`, 'Separate with commas')}
@@ -108,7 +109,7 @@ export default {
           shopName: v.shopName.trim(), phone: v.phone, email: v.email, address: v.address, tin: v.tin,
           leadDays: num(v.leadDays) || 7, coverDays: num(v.coverDays) || 30, windowDays: num(v.windowDays) || 30,
           receiptHeader: v.receiptHeader, receiptFooter: v.receiptFooter, taxName: v.taxName || 'VAT', taxRate: Math.max(0, num(v.taxRate)),
-          autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on',
+          autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on', useShifts: v.useShifts === 'on',
           payMethods: list(v.payMethods).length ? list(v.payMethods) : ['Cash'],
           expenseCategories: list(v.expenseCategories),
         });

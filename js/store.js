@@ -1,7 +1,7 @@
 // App state + every action that changes data.
 import {
   DAY, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
-  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals,
+  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -24,10 +24,11 @@ export const DEFAULT_SETTINGS = {
   taxName: 'VAT',
   receiptHeader: '',
   receiptFooter: 'Thank you!',
+  useShifts: false,
   poNote: 'Please supply the items below. Quote this order number on your delivery note and invoice.',
 };
 
-const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments'];
+const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments', 'shifts'];
 const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers'];
 
 export const store = {
@@ -44,7 +45,7 @@ export const store = {
   pending: false,
   online: navigator.onLine,
   since: 0,
-  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [] },
+  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [] },
   settings: { ...DEFAULT_SETTINGS },
   _loaded: new Set(),
   _subs: new Set(),
@@ -440,6 +441,47 @@ export const store = {
       },
     ]);
     this._alertNewLows(before);
+  },
+
+  /** Stock count of many items: counts = [{ itemId, counted }]. Differences are saved as adjustments. */
+  countStock(counts, note = '') {
+    const ts = Date.now();
+    const ops = [];
+    let changed = 0, value = 0;
+    for (const { itemId, counted } of counts) {
+      const it = this.item(itemId);
+      if (!it || counted === '' || counted === null || counted === undefined) continue;
+      const diff = num(counted) - num(it.stock);
+      if (!diff) continue;
+      changed++;
+      value += diff * num(it.cost);
+      ops.push({ type: 'incr', col: 'items', id: itemId, field: 'stock', by: diff });
+      ops.push({ type: 'set', col: 'adjustments', id: this.backend.newId('adjustments'), data: { ts, date: dayKey(ts), itemId, name: it.name, qty: diff, cost: num(it.cost), reason: 'Stock count', note, by: this.user?.email || '' } });
+    }
+    for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
+    return { changed, value: money(value) };
+  },
+
+  // ---------- Shifts (cash drawer) ----------
+  myOpenShift() { return this.data.shifts.find((s) => !s.closedAt && s.by === this.user?.email); },
+  shiftFigures(shift) { return shiftExpected(shift, this.data.sales, this.data.payments, { cashName: (this.settings.payMethods || ['Cash'])[0] || 'Cash' }); },
+  openShift(openingCash) {
+    if (this.myOpenShift()) throw new Error('You already have an open shift');
+    const ts = Date.now();
+    const id = this.backend.newId('shifts');
+    this.backend.write([{ type: 'set', col: 'shifts', id, data: { no: docNo('SH', ts), ts, date: dayKey(ts), openingCash: money(openingCash), moves: [], by: this.user?.email || '', byName: this.user?.name || '' } }]);
+    return id;
+  },
+  shiftMove(shift, { type, amount, note = '' }) {
+    if (!(money(amount) > 0)) throw new Error('Enter the amount');
+    const moves = [...(shift.moves || []), { ts: Date.now(), type, amount: money(amount), note }];
+    this.backend.write([{ type: 'merge', col: 'shifts', id: shift.id, data: { moves } }]);
+  },
+  closeShift(shift, countedCash, note = '') {
+    const f = this.shiftFigures(shift);
+    const counted = money(countedCash);
+    this.backend.write([{ type: 'merge', col: 'shifts', id: shift.id, data: { closedAt: Date.now(), countedCash: counted, expectedCash: f.expected, difference: counted - f.expected, figures: f, closeNote: note } }]);
+    return { ...f, counted, difference: counted - f.expected };
   },
 
   // ---------- Expenses ----------

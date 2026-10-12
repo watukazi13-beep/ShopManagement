@@ -524,3 +524,11 @@ code { font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-
 .steps-list li { margin: 6px 0; }
 .doc td.r, .doc th.r { white-space: nowrap; }
 @media (max-width: 520px) { .doc th, .doc td { padding: 5px 4px; } }
+
+.pos-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pos-tools:not(:empty) { margin-bottom: 10px; }
+.pos-tools .banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; }
+.count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--green-2); font-size: .75rem; text-align: center; }
+.count-table th:nth-child(4), .count-table td:nth-child(4) { width: 70px; }
+.disc-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.disc-row input { flex: 1; min-width: 110px; }

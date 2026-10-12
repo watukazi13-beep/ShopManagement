@@ -328,3 +328,30 @@ export function salesBreakdown(sales, [from, to], by, itemCategory = () => '') {
     net: money(r.net), cogs: money(r.cogs), profit: money(r.net - r.cogs),
   })).sort((a, b) => (by === 'day' ? b.key.localeCompare(a.key) : b.net - a.net));
 }
+
+/**
+ * Cash a drawer should hold at the end of a shift:
+ * opening cash + cash sales − cash refunds + customer payments in cash + cash put in − cash taken out.
+ */
+export function shiftExpected(shift, sales = [], payments = [], { cashName = 'Cash' } = {}) {
+  const from = num(shift.ts);
+  const to = num(shift.closedAt) || Infinity;
+  const mine = (x) => x.by === shift.by && x.ts >= from && x.ts < to;
+  const isCash = (p) => String(p || '').toLowerCase() === cashName.toLowerCase();
+  let cashSales = 0, cashRefunds = 0, otherSales = 0, count = 0;
+  for (const s of sales) {
+    if (s.voided || !mine(s)) continue;
+    if (s.type === 'refund') { if (isCash(s.pay) && !s.credit) cashRefunds -= num(s.total); continue; }
+    count += 1;
+    if (isCash(s.pay) && !s.credit) cashSales += num(s.total); else otherSales += num(s.total);
+  }
+  const cashPayments = payments.filter((p) => mine(p) && isCash(p.method)).reduce((t, p) => t + num(p.amount), 0);
+  const moves = shift.moves || [];
+  const cashIn = moves.filter((m) => m.type === 'in').reduce((t, m) => t + num(m.amount), 0);
+  const cashOut = moves.filter((m) => m.type === 'out').reduce((t, m) => t + num(m.amount), 0);
+  const expected = num(shift.openingCash) + cashSales - cashRefunds + cashPayments + cashIn - cashOut;
+  return {
+    count, cashSales: money(cashSales), cashRefunds: money(cashRefunds), otherSales: money(otherSales),
+    cashPayments: money(cashPayments), cashIn: money(cashIn), cashOut: money(cashOut), expected: money(expected),
+  };
+}

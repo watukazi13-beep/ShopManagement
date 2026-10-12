@@ -19,6 +19,7 @@ export default {
           ${boss ? `<button class="btn ghost" data-act="import">${icon('upload')}<span class="hide-sm">Import</span></button>
           <button class="btn ghost" data-act="export">${icon('download')}<span class="hide-sm">Export</span></button>
           <button class="btn ghost" data-act="levels">Min / max</button>
+          <button class="btn ghost" data-act="count">Count stock</button>
           <button class="btn primary" data-act="new">${icon('plus')}Add item</button>` : ''}
         </div>
       </div>
@@ -113,6 +114,7 @@ export default {
       if (a === 'import') openImport();
       if (a === 'export') exportItems();
       if (a === 'levels') openLevels();
+      if (a === 'count') openCount();
       const id = e.target.closest('[data-item]')?.dataset.item;
       if (id) openItem(store.item(id));
     });
@@ -410,6 +412,62 @@ export function openLevels() {
       }
       const n = changes.length ? store.setLevels(changes) : 0;
       toast(n ? `Saved levels for ${n} item${n > 1 ? 's' : ''}` : 'No changes');
+    },
+  });
+}
+
+/** Count many items at once (all, or one category). Only the items you type a count for change. */
+export function openCount() {
+  const items = store.activeItems().filter((i) => !i.service);
+  const cats = [...new Set(items.map((i) => i.category || 'Other'))].sort();
+  modal({
+    title: 'Count stock',
+    wide: true,
+    body: `
+      <p class="muted small">Type what you count on the shelf. Leave a box empty to skip that item. Differences are saved as "Stock count" adjustments, and shortages count as stock losses in your profit report.</p>
+      <div class="row-btns spread">
+        <div class="searchbar grow">${icon('search')}<input type="search" id="ct-q" placeholder="Search items" autocomplete="off"></div>
+        ${cats.length > 1 ? `<select id="ct-cat" aria-label="Category"><option value="">All categories</option>${cats.map((c) => `<option>${esc(c)}</option>`).join('')}</select>` : ''}
+      </div>
+      <table class="table levels-table count-table">
+        <thead><tr><th>Item</th><th class="r">Recorded</th><th class="r">Counted</th><th class="r">Difference</th></tr></thead>
+        <tbody>${items.map((i) => `
+          <tr data-id="${i.id}" data-name="${esc(i.name.toLowerCase())}" data-cat="${esc(i.category || 'Other')}">
+            <td>${esc(i.name)}</td><td class="r num">${fmtQty(i.stock)}</td>
+            <td class="r"><input class="ct-n" type="number" inputmode="decimal" min="0" step="any" aria-label="Counted ${esc(i.name)}"></td>
+            <td class="r num ct-d"></td></tr>`).join('')}</tbody>
+      </table>
+      <p class="total-row"><span id="ct-sum">No counts yet</span><strong id="ct-val"></strong></p>
+      ${field('Note (optional)', '<input name="note" placeholder="e.g. end of month count">')}`,
+    actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Save count</button>',
+    onMount: (dlg) => {
+      const filter = () => {
+        const q = dlg.querySelector('#ct-q').value.trim().toLowerCase();
+        const c = dlg.querySelector('#ct-cat')?.value || '';
+        dlg.querySelectorAll('tbody tr').forEach((tr) => { tr.hidden = (q && !tr.dataset.name.includes(q)) || (c && tr.dataset.cat !== c); });
+      };
+      dlg.querySelector('#ct-q').addEventListener('input', filter);
+      dlg.querySelector('#ct-cat')?.addEventListener('change', filter);
+      dlg.querySelector('tbody').addEventListener('input', () => {
+        let n = 0, changed = 0, val = 0;
+        dlg.querySelectorAll('tbody tr').forEach((tr) => {
+          const inp = tr.querySelector('.ct-n');
+          const cell = tr.querySelector('.ct-d');
+          if (inp.value === '') { cell.textContent = ''; return; }
+          const it = store.item(tr.dataset.id);
+          const d = num(inp.value) - num(it.stock);
+          n++; if (d) changed++; val += d * num(it.cost);
+          cell.innerHTML = d === 0 ? '<span class="up">✓</span>' : `<span class="${d < 0 ? 'neg' : 'up'}">${d > 0 ? '+' : '−'}${fmtQty(Math.abs(d))}</span>`;
+        });
+        dlg.querySelector('#ct-sum').textContent = n ? `${n} counted · ${changed} different` : 'No counts yet';
+        dlg.querySelector('#ct-val').textContent = n ? `${val < 0 ? '−' : '+'}${fmt(Math.abs(val))} at cost` : '';
+      });
+    },
+    onSubmit: (v, { form }) => {
+      const counts = [...form.querySelectorAll('tbody tr')].map((tr) => ({ itemId: tr.dataset.id, counted: tr.querySelector('.ct-n').value }));
+      if (!counts.some((c) => c.counted !== '')) throw new Error('Type the count for at least one item');
+      const r = store.countStock(counts, v.note);
+      toast(r.changed ? `Count saved — ${r.changed} item${r.changed > 1 ? 's' : ''} corrected (${r.value < 0 ? '−' : '+'}${fmt(Math.abs(r.value))})` : 'Count saved — everything matched');
     },
   });
 }

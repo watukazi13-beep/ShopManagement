@@ -436,6 +436,56 @@ with sync_playwright() as p:
     check('Refund' in pg.locator('main').inner_text(), 'receipts list shows refunds and can be searched')
     go('#/settings'); pg.fill('#shop-form [name=taxRate]', '0'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(200)
 
+    # --- Stock count of many items
+    chalk0 = item(pg, 'Chalk')['stock']; rice0 = item(pg, 'Rice')['stock']
+    go('#/stock'); pg.click('[data-act=count]'); pg.wait_for_timeout(300)
+    dlg().locator('tr', has_text='Chalk').locator('.ct-n').fill(str(chalk0 - 5))
+    dlg().locator('tr', has_text='Rice').locator('.ct-n').fill(str(rice0))
+    check('2 counted · 1 different' in dlg().locator('#ct-sum').inner_text(), 'count screen shows what differs')
+    submit('Save count'); pg.wait_for_timeout(300)
+    adj = [a for a in data(pg)['adjustments'].values() if a['reason'] == 'Stock count' and a['name'] == 'Chalk']
+    check(item(pg, 'Chalk')['stock'] == chalk0 - 5 and adj and adj[-1]['qty'] == -5 and item(pg, 'Rice')['stock'] == rice0, 'only the item that differed was corrected (Chalk −5)')
+
+    # --- Hold a sale and pick it up again
+    go('#/sell')
+    if pg.locator('[data-clear]').count(): pg.locator('[data-clear]').first.dispatch_event('click'); pg.wait_for_timeout(100)
+    rice_tile = pg.locator('.tile:has(.tile-name:text-is("Rice"))')
+    rice_tile.click(); rice_tile.click()
+    if W < 900: pg.click('#cart-bar'); pg.wait_for_timeout(150)
+    pg.locator('[data-hold]').first.click(); pg.wait_for_timeout(200)
+    dlg().locator('[name=name]').fill('School order'); submit('Hold sale'); pg.wait_for_timeout(200)
+    check(pg.locator('[data-held]').count() == 1 and pg.locator('.cart-line').count() == 0, 'sale held and the till is free')
+    pg.click('[data-held]'); pg.wait_for_timeout(200)
+    check('School order' in dlg().inner_text(), 'held sales list shows it')
+    dlg().locator('[data-resume]').first.click(); pg.wait_for_timeout(200)
+    check(pg.locator('.cart-line').count() == 1 and pg.locator('[data-held]').count() == 0, 'held sale opened back into the till')
+    pg.locator('[data-clear]').first.dispatch_event('click'); pg.wait_for_timeout(100)
+
+    # --- Shifts: open with a float, sell for cash, take cash out, close with a count
+    go('#/settings'); pg.check('#shop-form [name=useShifts]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(300)
+    go('#/sell')
+    check('No shift open' in pg.locator('#pos-tools').inner_text(), 'Sell asks to open a shift')
+    pg.locator('#pos-tools [data-shift]').click(); pg.wait_for_timeout(200)
+    dlg().locator('[name=cash]').fill('20000'); submit('Open shift'); pg.wait_for_timeout(300)
+    check(pg.locator('#pos-tools').inner_text().startswith('Shift'), 'shift opened')
+    pg.locator('.tile:has(.tile-name:text-is("Rice"))').click()
+    if W < 900: pg.click('#cart-bar'); pg.wait_for_timeout(150)
+    pg.click('[data-charge]'); pg.wait_for_timeout(200); dlg().locator('label.chip:has-text("Cash")').first.click(); submit('Complete sale'); pg.wait_for_timeout(300)
+    if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+    rice_price = item(pg, 'Rice')['price']
+    pg.locator('#pos-tools [data-shift]').click(); pg.wait_for_timeout(250)
+    dlg().locator('[data-move=out]').click(); pg.wait_for_timeout(200)
+    dlg().locator('[name=amount]').fill('1000'); dlg().locator('[name=note]').fill('Transport'); submit('Save'); pg.wait_for_timeout(400)
+    expected = 20000 + rice_price - 1000
+    check(f'{expected:,}' in dlg().inner_text(), f'shift expects {expected:,} in the drawer')
+    dlg().locator('[data-close-shift]').click(); pg.wait_for_timeout(200)
+    dlg().locator('[name=counted]').fill(str(expected - 500)); dlg().locator('[name=counted]').dispatch_event('input')
+    check('500 short' in dlg().inner_text(), 'closing shows the drawer is short by 500')
+    submit('Close shift'); pg.wait_for_timeout(300)
+    sh = list(data(pg)['shifts'].values())[-1]
+    check(sh.get('closedAt') and sh['difference'] == -500 and sh['expectedCash'] == expected, 'shift closed and saved with the difference')
+    go('#/settings'); pg.uncheck('#shop-form [name=useShifts]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(200)
+
     # --- Screens on this size
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
         go(h); pg.wait_for_timeout(300)

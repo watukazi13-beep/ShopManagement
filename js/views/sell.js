@@ -1,11 +1,16 @@
 import { store } from '../store.js';
 import { cartTotals, num, parseDiscount, taxIncluded, refundTotals } from '../calc.js';
-import { esc, fmt, fmtQty, fmtDateTime, icon, modal, toast, printHtml, confirmBox, emptyState, field } from '../ui.js';
+import { esc, fmt, fmtQty, fmtDateTime, fmtTime, icon, modal, toast, printHtml, confirmBox, emptyState, field } from '../ui.js';
 
 // The cart survives switching screens (kept for this browser tab).
 let cart = [];
 try { cart = JSON.parse(sessionStorage.getItem('cart') || '[]'); } catch { cart = []; }
 const saveCart = () => { try { sessionStorage.setItem('cart', JSON.stringify(cart)); } catch { /* ignore */ } };
+
+// Held sales ("open tickets"): parked carts on this device, picked up again later.
+const heldKey = () => `held-sales-${store.shop?.id || 'local'}`;
+const getHeld = () => { try { return JSON.parse(localStorage.getItem(heldKey()) || '[]'); } catch { return []; } };
+const setHeld = (list) => { try { localStorage.setItem(heldKey(), JSON.stringify(list)); } catch { /* ignore */ } };
 
 function addToCart(item, qty = 1) {
   const line = cart.find((l) => l.itemId === item.id);
@@ -22,6 +27,7 @@ export default {
     el.innerHTML = `
       <div class="pos">
         <section class="pos-items">
+          <div class="pos-tools" id="pos-tools"></div>
           <div class="searchbar">
             ${icon('search')}
             <input id="pos-search" type="search" placeholder="Search or scan barcode" autocomplete="off" enterkeyhint="search">
@@ -74,7 +80,7 @@ export default {
       const t = cartTotals(lines.map((l) => ({ qty: l.qty, price: l.price, cost: 0 })));
       const count = lines.reduce((s, l) => s + num(l.qty), 0);
       cartEl.innerHTML = `
-        <div class="cart-head"><h2>Current sale</h2>${lines.length ? `<button type="button" class="link" data-clear>Clear</button>` : ''}</div>
+        <div class="cart-head"><h2>Current sale</h2>${lines.length ? `<span class="row-btns"><button type="button" class="link" data-hold>Hold</button><button type="button" class="link" data-clear>Clear</button></span>` : ''}</div>
         ${lines.length ? `<ul class="cart-lines">${lines.map((l) => {
           const short = !l.item.service && num(l.qty) > num(l.item.stock);
           return `<li class="cart-line">
@@ -99,7 +105,16 @@ export default {
       barEl.innerHTML = `<span>${fmtQty(count)} item${count === 1 ? '' : 's'}</span><strong>View sale · ${fmt(t.total)}</strong>`;
     };
 
-    const draw = () => { drawTiles(); drawCart(); };
+    const drawTools = () => {
+      const held = getHeld();
+      const shifts = store.settings.useShifts;
+      const sh = shifts ? store.myOpenShift() : null;
+      el.querySelector('#pos-tools').innerHTML = `
+        ${shifts && !sh ? `<div class="banner warn grow">No shift open. <button type="button" class="btn primary small" data-shift>Open shift</button></div>` : ''}
+        ${held.length ? `<button type="button" class="btn ghost small" data-held>Held sales <span class="count">${held.length}</span></button>` : ''}
+        ${shifts && sh ? `<button type="button" class="btn ghost small" data-shift>Shift · since ${fmtTime(sh.ts)}</button>` : ''}`;
+    };
+    const draw = () => { drawTools(); drawTiles(); drawCart(); };
 
     search.addEventListener('input', () => { q = search.value.trim(); drawTiles(); });
     search.addEventListener('keydown', (e) => {
@@ -133,12 +148,54 @@ export default {
       if (d.qty) return editLine(d.qty, 'qty');
       if (d.price) return store.can('editPrice') || store.item(d.price)?.variablePrice ? editLine(d.price, 'price') : toast('Only the owner or a manager can change prices', { kind: 'err' });
       if (d.clear !== undefined) { cart = []; saveCart(); draw(); return; }
+      if (d.hold !== undefined) return holdSale();
+      if (d.held !== undefined) return openHeld();
+      if (d.shift !== undefined) return openShiftPanel();
       if (d.charge !== undefined) return checkout();
       if (t.id === 'cart-bar') { el.querySelector('.pos').classList.add('show-cart'); return; }
     });
     cartEl.addEventListener('click', (e) => {
       if (e.target === cartEl) el.querySelector('.pos').classList.remove('show-cart');
     });
+
+    function holdSale() {
+      modal({
+        title: 'Hold this sale',
+        body: `<p class="muted small">Park it and serve the next customer. Pick it up again from <b>Held sales</b>.</p>${field('Name or note', '<input name="name" autofocus placeholder="e.g. Mama Asha, school order">')}`,
+        actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Hold sale</button>',
+        onSubmit: ({ name }) => {
+          const total = cart.reduce((t, l) => t + num(l.qty) * num(l.price), 0);
+          setHeld([...getHeld(), { id: Date.now().toString(36), name: name.trim() || `Sale ${getHeld().length + 1}`, ts: Date.now(), total, cart }]);
+          cart = []; saveCart();
+          el.querySelector('.pos').classList.remove('show-cart');
+          draw();
+          toast('Sale held');
+        },
+      });
+    }
+    function openHeld() {
+      const held = getHeld();
+      modal({
+        title: 'Held sales',
+        body: held.length ? `<ul class="rows">${held.map((h) => `<li class="row"><div class="grow"><b>${esc(h.name)}</b><small>${fmtTime(h.ts)} · ${h.cart.length} item${h.cart.length === 1 ? '' : 's'} · ${fmt(h.total)}</small></div>
+          <button type="button" class="btn primary small" data-resume="${h.id}">Open</button><button type="button" class="icon-btn" data-drop="${h.id}" aria-label="Delete">${icon('trash')}</button></li>`).join('')}</ul>` : '<p class="muted">Nothing held.</p>',
+        actions: '<button class="btn primary">Close</button>',
+        onMount: (dlg, close) => {
+          dlg.addEventListener('click', (e) => {
+            const r = e.target.closest('[data-resume]')?.dataset.resume;
+            const x = e.target.closest('[data-drop]')?.dataset.drop;
+            if (r) {
+              const h = getHeld().find((y) => y.id === r);
+              if (cart.length) setHeld([...getHeld().filter((y) => y.id !== r), { id: Date.now().toString(36), name: 'Previous sale', ts: Date.now(), total: cart.reduce((t, l) => t + num(l.qty) * num(l.price), 0), cart }]);
+              else setHeld(getHeld().filter((y) => y.id !== r));
+              cart = h.cart.filter((l) => store.item(l.itemId)); saveCart(); draw(); close();
+              toast(`${h.name} opened`);
+            }
+            if (x) { setHeld(getHeld().filter((y) => y.id !== x)); close(); draw(); openHeld(); }
+          });
+        },
+      });
+    }
 
     /** Add an item; variable-price items ask for their price first. */
     function add(item) {
@@ -366,6 +423,67 @@ export function openRefund(s) {
       const r = store.refundSale(s, form.closest('dialog')._qtys(), v.reason || '');
       toast(`Refunded ${fmt(-r.total)} — stock returned`);
       setTimeout(() => showReceipt(r), 150);
+    },
+  });
+}
+
+/** Shift (cash drawer): open with a float, cash in/out, close with a count. */
+export function openShiftPanel() {
+  const sh = store.myOpenShift();
+  if (!sh) {
+    modal({
+      title: 'Open shift',
+      body: field('Cash in the drawer now (TSh)', '<input name="cash" type="number" inputmode="numeric" min="0" step="1" required autofocus value="0">', 'Count the money in the drawer before you start selling.'),
+      actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Open shift</button>',
+      onSubmit: ({ cash }) => { store.openShift(cash); toast('Shift opened'); },
+    });
+    return;
+  }
+  const f = store.shiftFigures(sh);
+  modal({
+    title: `Shift since ${fmtTime(sh.ts)}`,
+    body: `
+      <table class="table">
+        <tr><td>Opening cash</td><td class="r num">${fmt(sh.openingCash)}</td></tr>
+        <tr><td>Cash sales (${f.count} sale${f.count === 1 ? '' : 's'} in total)</td><td class="r num">+${fmt(f.cashSales)}</td></tr>
+        ${f.cashRefunds ? `<tr><td>Cash refunds</td><td class="r num">−${fmt(f.cashRefunds)}</td></tr>` : ''}
+        ${f.cashPayments ? `<tr><td>Customer payments in cash</td><td class="r num">+${fmt(f.cashPayments)}</td></tr>` : ''}
+        ${f.cashIn ? `<tr><td>Cash put in</td><td class="r num">+${fmt(f.cashIn)}</td></tr>` : ''}
+        ${f.cashOut ? `<tr><td>Cash taken out</td><td class="r num">−${fmt(f.cashOut)}</td></tr>` : ''}
+        <tr class="tot"><td>Expected in drawer</td><td class="r num">${fmt(f.expected)}</td></tr>
+        <tr><td class="muted">Other payments (M-Pesa, card, credit…)</td><td class="r num muted">${fmt(f.otherSales)}</td></tr>
+      </table>
+      ${(sh.moves || []).length ? `<h3>Cash in / out</h3><ul class="rows">${sh.moves.map((m) => `<li class="row"><div class="grow">${m.type === 'in' ? 'Put in' : 'Taken out'}<small>${fmtTime(m.ts)}${m.note ? ' · ' + esc(m.note) : ''}</small></div><span class="num ${m.type === 'in' ? 'up' : 'neg'}">${m.type === 'in' ? '+' : '−'}${fmt(m.amount)}</span></li>`).join('')}</ul>` : ''}`,
+    actions: `<button type="button" class="btn ghost" data-move="in">Cash in</button><button type="button" class="btn ghost" data-move="out">Cash out</button>
+      <button type="button" class="btn accent" data-close-shift>Close shift</button><button class="btn primary">Done</button>`,
+    onMount: (dlg, close) => {
+      dlg.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', () => {
+        close();
+        const type = b.dataset.move;
+        modal({
+          title: type === 'in' ? 'Put cash in' : 'Take cash out',
+          body: field('Amount (TSh)', '<input name="amount" type="number" inputmode="numeric" min="1" step="1" required autofocus>') + field('Reason', `<input name="note" placeholder="${type === 'in' ? 'e.g. change from bank' : 'e.g. paid transport'}">`),
+          actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Save</button>',
+          onSubmit: (v) => { store.shiftMove(sh, { type, amount: v.amount, note: v.note }); toast('Saved'); setTimeout(openShiftPanel, 150); },
+        });
+      }));
+      dlg.querySelector('[data-close-shift]').addEventListener('click', () => {
+        close();
+        modal({
+          title: 'Close shift',
+          body: `<p>Expected in the drawer: <b>${fmt(f.expected)}</b></p>${field('Cash counted (TSh)', '<input name="counted" type="number" inputmode="numeric" min="0" step="1" required autofocus>')}<p id="cs-diff" class="small"></p>${field('Note (optional)', '<input name="note">')}`,
+          actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Close shift</button>',
+          onMount: (d2) => d2.addEventListener('input', () => {
+            const v = d2.querySelector('[name=counted]').value;
+            const diff = num(v) - f.expected;
+            d2.querySelector('#cs-diff').innerHTML = v === '' ? '' : diff === 0 ? '<span class="up">Drawer matches.</span>' : diff > 0 ? `<span class="warn-text">${fmt(diff)} more than expected.</span>` : `<span class="neg">${fmt(-diff)} short.</span>`;
+          }),
+          onSubmit: (v) => {
+            const r = store.closeShift(sh, v.counted, v.note);
+            toast(r.difference === 0 ? 'Shift closed — drawer matches' : `Shift closed — ${r.difference > 0 ? 'over' : 'short'} by ${fmt(Math.abs(r.difference))}`);
+          },
+        });
+      });
     },
   });
 }
