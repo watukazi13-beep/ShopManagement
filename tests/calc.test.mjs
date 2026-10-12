@@ -115,4 +115,18 @@ assert.equal(byPay.find((r) => r.key === 'Cash').net, 5500 - 1375);
 assert.equal(byPay.find((r) => r.key === 'Cash').count, 1);
 assert.equal(salesBreakdown(sales, range, 'day').length, 2);
 
+// Orders fill up to the maximum: Correction pen 3 in stock, min 5, max 20 → order 17
+const pen = reorderPlan([{ id: 'cp', name: 'Correction pen', stock: 3, minStock: 5, maxStock: 20 }], [], {}, now)[0];
+assert.equal(pen.status, 'low');
+assert.equal(pen.maxSet, true);
+assert.equal(pen.suggestQty, 17);
+const penRfq = draftRfqs([pen])[0].lines[0];
+assert.equal(penRfq.qty, 17);
+assert.equal(penRfq.fillTo, 20);
+assert.equal(penRfq.maxSet, true);
+// Negative stock: Bahasha A4 at −143, max 200 → order 343
+assert.equal(reorderPlan([{ id: 'b', name: 'Bahasha A4', stock: -143, minStock: 10, maxStock: 200 }], [], {}, now)[0].suggestQty, 343);
+// No maximum → flagged
+assert.equal(reorderPlan([{ id: 'n', name: 'X', stock: 1, minStock: 5 }], [], {}, now)[0].maxSet, false);
+
 console.log('All calculation tests passed');

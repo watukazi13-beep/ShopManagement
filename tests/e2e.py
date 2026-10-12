@@ -257,6 +257,25 @@ with sync_playwright() as p:
     check(item(pg, 'Photocopy')['stock'] == 0, 'service stock not reduced by a sale')
     pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
 
+    # --- Minimum / maximum stock levels
+    go('#/stock'); pg.click('[data-act=levels]'); pg.wait_for_timeout(250)
+    row = dlg().locator('tr', has_text='Chalk')
+    row.locator('.lv-min').fill('200'); row.locator('.lv-max').fill('150')
+    submit('Save levels')
+    check(dlg().count() == 1 and item(pg, 'Chalk')['maxStock'] == 300, 'maximum below minimum is refused')
+    row.locator('.lv-max').fill('400')
+    dlg().locator('[data-fill]').click() if dlg().locator('[data-fill]').count() else None
+    submit('Save levels'); pg.wait_for_timeout(300)
+    ch = item(pg, 'Chalk')
+    check(ch['minStock'] == 200 and ch['maxStock'] == 400, 'min / max saved from the levels table')
+    check(all(i['maxStock'] > 0 for i in data(pg)['items'].values() if not i.get('service') and i.get('active', True) and i.get('minStock', 0) > 0), 'suggested maximums filled for items with a minimum')
+    check(pg.locator('#stock-list tr', has_text='Chalk').inner_text().count('400') >= 1, 'maximum shown in the stock list')
+    go('#/orders?tab=rfq'); pg.click('[data-act=gen]'); pg.wait_for_timeout(400)
+    rf = [r for r in data(pg)['rfqs'].values() if any(l['name'] == 'Chalk' for l in r['lines'])]
+    chalk_line = next(l for l in rf[-1]['lines'] if l['name'] == 'Chalk') if rf else {}
+    check(chalk_line.get('qty') == 238, f"order fills Chalk up to its maximum: 400 − 162 = 238 (got {chalk_line.get('qty')})")
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+
     # --- Screens on this size
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
         go(h); pg.wait_for_timeout(300)

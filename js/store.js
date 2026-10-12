@@ -129,6 +129,12 @@ export const store = {
     }
     return id;
   },
+  /** changes: [{ id, minStock, maxStock }] — saved together. */
+  setLevels(changes) {
+    const ops = changes.map((c) => ({ type: 'merge', col: 'items', id: c.id, data: { minStock: num(c.minStock), maxStock: num(c.maxStock), ...this._stamp() } }));
+    for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
+    return ops.length;
+  },
   archiveItem(id) {
     this.backend.write([{ type: 'merge', col: 'items', id, data: { active: false, ...this._stamp() } }]);
   },

@@ -109,6 +109,7 @@ function lineRow(l, withCost) {
     <input class="li-qty" type="number" inputmode="decimal" step="any" min="0" placeholder="Qty" value="${l.qty ?? ''}" aria-label="Quantity">
     ${withCost ? `<input class="li-cost" type="number" inputmode="decimal" step="any" min="0" placeholder="Unit cost" value="${l.cost ?? ''}" aria-label="Cost per unit">` : ''}
     <button type="button" class="icon-btn" data-del-line aria-label="Remove line">${icon('x')}</button>
+    ${!withCost && l.itemId && store.item(l.itemId) && !(num(store.item(l.itemId).maxStock) > 0) ? '<small class="li-note">Max not set — quantity is an estimate. Set it in Stock → Min / max.</small>' : ''}
   </div>`;
 }
 function readLines(dlg) {

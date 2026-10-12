@@ -175,7 +175,7 @@ export function reorderPlan(items, sales, settings = {}, now = Date.now()) {
       const needs = status !== 'ok';
       const suggestQty = needs ? roundUpTo(Math.max(target - stock, 1), item.packSize) : 0;
       const daysLeft = avgDaily > 0 ? Math.max(0, stock) / avgDaily : null;
-      return { item, stock, avgDaily, reorderPoint, target, status, suggestQty, daysLeft };
+      return { item, stock, avgDaily, reorderPoint, target, maxSet: num(item.maxStock) > 0, status, suggestQty, daysLeft };
     })
     .sort((a, b) => rank(a) - rank(b) || (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9));
 }
@@ -195,6 +195,8 @@ export function draftRfqs(plan, suppliers = [], { includeAll = false } = {}) {
       sku: p.item.sku || '',
       unit: p.item.unit || 'pcs',
       qty,
+      fillTo: p.target,
+      maxSet: p.maxSet,
       lastCost: money(p.item.lastCost || p.item.cost),
     });
   }
