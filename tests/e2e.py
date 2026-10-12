@@ -2,6 +2,8 @@
 Run:  python3 -m http.server 8765  (in the repo folder), then  python3 tests/e2e.py
 """
 import json, sys, os
+# Let the test intercept requests made by the offline service worker too.
+os.environ.setdefault('PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS', '1')
 from playwright.sync_api import sync_playwright, expect
 
 URL = os.environ.get('APP_URL', 'http://localhost:8765/')
@@ -23,6 +25,8 @@ def item(pg, name):
 with sync_playwright() as p:
     b = p.chromium.launch()
     ctx = b.new_context(viewport={'width': W, 'height': H})
+    # Tests never touch the real Firebase project: serve a blank config.
+    ctx.route('**/js/config.js', lambda r: r.fulfill(status=200, body="export const firebaseConfig = { apiKey: '' };", headers={'content-type': 'text/javascript'}))
     ctx.add_init_script("window.__opened=[]; window.open=(u)=>{window.__opened.push(u); return null;}; window.print=()=>{};")
     pg = ctx.new_page()
     errs = []
