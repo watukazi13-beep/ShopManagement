@@ -115,6 +115,7 @@ export const store = {
       packSize: num(input.packSize) || 1,
       supplierId: input.supplierId || '',
       service: !!input.service,
+      variablePrice: !!input.variablePrice,
       active: true,
       ...this._stamp(),
     };
@@ -155,17 +156,18 @@ export const store = {
       const base = {
         name: r.name, sku: r.sku || '', barcode: r.barcode || '', category: r.category || '',
         price: money(r.price), cost: num(r.cost), lastCost: num(r.cost), minStock: num(r.minStock),
-        unit: r.unit || 'pcs', active: true, ...this._stamp(),
+        unit: r.unit || 'pcs', service: !!r.service, variablePrice: !!r.variablePrice, active: true, ...this._stamp(),
       };
+      if (r.maxStock !== undefined && r.maxStock !== '') base.maxStock = num(r.maxStock);
       if (supplierId) base.supplierId = supplierId;
       if (existing) {
-        if (r.stock !== undefined && r.stock !== '') base.stock = num(r.stock);
+        if (r.stock !== undefined && r.stock !== '') base.stock = r.service ? 0 : num(r.stock);
         ops.push({ type: 'merge', col: 'items', id: existing.id, data: base });
         updated++;
       } else {
         ops.push({
           type: 'set', col: 'items', id: this.backend.newId('items'),
-          data: { maxStock: 0, packSize: 1, supplierId: '', service: false, ...base, stock: num(r.stock), createdAt: Date.now() },
+          data: { maxStock: 0, packSize: 1, supplierId: '', ...base, stock: r.service ? 0 : num(r.stock), createdAt: Date.now() },
         });
         added++;
       }

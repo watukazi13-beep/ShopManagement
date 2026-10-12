@@ -59,7 +59,7 @@ export default {
           const low = !i.service && num(i.stock) <= Math.max(0, num(i.minStock));
           return `<button type="button" class="tile ${inCart.has(i.id) ? 'in' : ''}" data-add="${i.id}">
             <span class="tile-name">${esc(i.name)}</span>
-            <span class="tile-price">${fmt(i.price)}</span>
+            <span class="tile-price">${i.variablePrice ? 'Enter price' : fmt(i.price)}</span>
             ${i.service ? '' : `<span class="tile-stock ${low ? 'low' : ''}">${fmtQty(i.stock)} ${esc(i.unit || '')}</span>`}
             ${inCart.has(i.id) ? `<span class="tile-badge">${fmtQty(inCart.get(i.id))}</span>` : ''}
           </button>`;
@@ -111,10 +111,9 @@ export default {
       const list = items().filter(match);
       const pick = exact || (list.length === 1 ? list[0] : null);
       if (pick) {
-        addToCart(pick);
         search.value = ''; q = '';
-        draw();
-        toast(`Added ${pick.name}`, { ms: 1200 });
+        add(pick);
+        if (!pick.variablePrice) toast(`Added ${pick.name}`, { ms: 1200 });
       }
     });
 
@@ -123,7 +122,7 @@ export default {
       if (!t) return;
       const d = t.dataset;
       if (d.cat !== undefined) { cat = d.cat; drawTiles(); return; }
-      if (d.add) { addToCart(store.item(d.add)); draw(); return; }
+      if (d.add) { add(store.item(d.add)); return; }
       if (d.inc) { const l = cart.find((x) => x.itemId === d.inc); l.qty = num(l.qty) + 1; saveCart(); draw(); return; }
       if (d.dec) {
         const l = cart.find((x) => x.itemId === d.dec);
@@ -132,7 +131,7 @@ export default {
         saveCart(); draw(); return;
       }
       if (d.qty) return editLine(d.qty, 'qty');
-      if (d.price) return store.can('editPrice') ? editLine(d.price, 'price') : toast('Only the owner or a manager can change prices', { kind: 'err' });
+      if (d.price) return store.can('editPrice') || store.item(d.price)?.variablePrice ? editLine(d.price, 'price') : toast('Only the owner or a manager can change prices', { kind: 'err' });
       if (d.clear !== undefined) { cart = []; saveCart(); draw(); return; }
       if (d.charge !== undefined) return checkout();
       if (t.id === 'cart-bar') { el.querySelector('.pos').classList.add('show-cart'); return; }
@@ -140,6 +139,23 @@ export default {
     cartEl.addEventListener('click', (e) => {
       if (e.target === cartEl) el.querySelector('.pos').classList.remove('show-cart');
     });
+
+    /** Add an item; variable-price items ask for their price first. */
+    function add(item) {
+      if (!item) return;
+      if (!item.variablePrice || cart.some((l) => l.itemId === item.id)) { addToCart(item); draw(); return; }
+      modal({
+        title: item.name,
+        body: field('Price (TSh)', '<input name="price" type="number" inputmode="numeric" min="1" step="1" required autofocus>')
+          + field(`Quantity (${item.unit || 'pcs'})`, '<input name="qty" type="number" inputmode="decimal" min="0" step="any" value="1" required>'),
+        actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Add to sale</button>',
+        onSubmit: ({ price, qty }) => {
+          if (!(num(price) > 0)) throw new Error('Enter the price');
+          cart.push({ itemId: item.id, qty: num(qty) || 1, price: Math.round(num(price)) });
+          saveCart(); draw();
+        },
+      });
+    }
 
     function editLine(itemId, key) {
       const l = cart.find((x) => x.itemId === itemId);
@@ -163,6 +179,8 @@ export default {
 
     function checkout() {
       const lines = cart.filter((l) => store.item(l.itemId));
+      const noPrice = lines.find((l) => store.item(l.itemId).variablePrice && !(num(l.price) > 0));
+      if (noPrice) return toast(`Enter the price for ${store.item(noPrice.itemId).name}`, { kind: 'err' });
       const t = cartTotals(lines.map((l) => ({ ...l, cost: 0 })));
       const methods = store.settings.payMethods || ['Cash'];
       const boss = store.can('discount');

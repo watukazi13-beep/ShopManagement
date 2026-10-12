@@ -48,6 +48,8 @@ export default {
           <div><span>Items</span><strong>${items.length}</strong></div>
           <div><span>Stock value (cost)</span><strong>${fmt(v.cost)}</strong></div>
           <div><span>Stock value (selling)</span><strong>${fmt(v.retail)}</strong></div>
+          <div><span>Potential profit</span><strong>${fmt(v.retail - v.cost)}</strong></div>
+          <div><span>Margin</span><strong>${v.retail ? (Math.floor(((v.retail - v.cost) / v.retail) * 10000) / 100).toFixed(2) + '%' : '—'}</strong></div>
           <div class="${lows ? 'warn' : ''}"><span>Need restock</span><strong>${lows}</strong></div>
         </div>`;
       }
@@ -65,7 +67,7 @@ export default {
             <tr class="tap" data-item="${p.item.id}">
               <td><b>${esc(p.item.name)}</b><small>${esc(p.item.category || '')}${p.item.sku ? ' · ' + esc(p.item.sku) : ''}</small></td>
               <td class="r num">${p.service ? '—' : `${fmtQty(p.stock)} <small class="unit">${esc(p.item.unit || '')}</small>`}</td>
-              <td class="r num hide-sm">${fmt(p.item.price)}</td>
+              <td class="r num hide-sm">${p.item.variablePrice ? '<span class="muted">Variable</span>' : fmt(p.item.price)}</td>
               ${boss ? `<td class="r num hide-sm">${fmt(p.item.cost)}</td>` : ''}
               <td class="r num hide-sm">${p.service ? '' : p.suggestQty ? `<b>${fmtQty(p.suggestQty)}</b>` : `<span class="muted">at ${fmtQty(p.reorderPoint)}</span>`}</td>
               <td>${p.service ? '<span class="pill">Service</span>' : statusPill(p.status)}</td>
@@ -106,9 +108,10 @@ export function openItemForm(item = null) {
     body: `
       ${field('Name', `<input name="name" required autofocus value="${esc(it.name)}" placeholder="e.g. Sugar 1kg">`)}
       <div class="grid2">
-        ${field('Selling price (TSh)', `<input name="price" type="number" inputmode="numeric" min="0" step="1" required value="${it.price ?? ''}">`)}
+        ${field('Selling price (TSh)', `<input name="price" type="number" inputmode="numeric" min="0" step="1" value="${it.variablePrice ? '' : it.price ?? ''}" ${it.variablePrice ? 'disabled' : ''}>`)}
         ${field('Cost price (TSh)', `<input name="cost" type="number" inputmode="decimal" min="0" step="any" value="${it.cost !== undefined ? Math.round(num(it.cost) * 100) / 100 : ''}">`, item ? 'Updates automatically when you receive stock' : 'What you pay the supplier per unit')}
       </div>
+      <label class="check"><input type="checkbox" name="variablePrice" ${it.variablePrice ? 'checked' : ''}> Price is entered at the time of sale</label>
       <div class="grid2">
         ${field('Category', `<input name="category" list="cat-list" value="${esc(it.category)}" placeholder="e.g. Groceries"><datalist id="cat-list">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`)}
         ${field('Unit', `<input name="unit" list="unit-list" value="${esc(it.unit)}"><datalist id="unit-list">${UNITS.map((u) => `<option value="${u}">`).join('')}</datalist>`)}
@@ -131,6 +134,8 @@ export function openItemForm(item = null) {
       </details>`,
     actions: `${item ? '<button type="button" class="btn ghost danger" data-archive>Remove</button>' : ''}<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">${item ? 'Save changes' : 'Add item'}</button>`,
     onMount: (dlg, close) => {
+      const vp = dlg.querySelector('[name=variablePrice]');
+      vp.addEventListener('change', () => { const p = dlg.querySelector('[name=price]'); p.disabled = vp.checked; if (vp.checked) p.value = ''; });
       dlg.querySelector('[data-archive]')?.addEventListener('click', async () => {
         close();
         if (await confirmBox(`Remove ${item.name}? Its sales history stays in your reports.`, { ok: 'Remove item', danger: true })) {
@@ -142,7 +147,9 @@ export function openItemForm(item = null) {
     onSubmit: (v) => {
       const dup = store.activeItems().find((i) => i.name.toLowerCase() === v.name.trim().toLowerCase() && i.id !== item?.id);
       if (dup) throw new Error(`An item called “${dup.name}” already exists`);
-      store.saveItem({ ...v, id: item?.id, service: v.service === 'on' });
+      const variablePrice = v.variablePrice === 'on';
+      if (!variablePrice && v.price === '') throw new Error('Enter a selling price, or tick “Price is entered at the time of sale”');
+      store.saveItem({ ...v, price: variablePrice ? 0 : v.price, id: item?.id, service: v.service === 'on', variablePrice });
       toast(item ? 'Changes saved' : `${v.name} added`);
     },
   });
@@ -189,7 +196,7 @@ function openItem(item) {
     body: `
       <div class="stats compact">
         <div><span>In stock</span><strong>${item.service ? '—' : fmtQty(item.stock) + ' ' + esc(item.unit || '')}</strong></div>
-        <div><span>Selling price</span><strong>${fmt(item.price)}</strong></div>
+        <div><span>Selling price</span><strong>${item.variablePrice ? 'Set at sale' : fmt(item.price)}</strong></div>
         ${boss ? `<div><span>Average cost</span><strong>${fmt(item.cost)}</strong></div>
         <div><span>Margin</span><strong>${(margin * 100).toFixed(0)}%</strong></div>` : ''}
       </div>
@@ -213,9 +220,9 @@ function openItem(item) {
 }
 
 function exportItems() {
-  const rows = [['Name', 'Category', 'SKU', 'Barcode', 'Unit', 'Price', 'Cost', 'In stock', 'Low stock', 'Fill up to', 'Pack size', 'Supplier']];
+  const rows = [['Name', 'Category', 'SKU', 'Barcode', 'Unit', 'Price', 'Cost', 'In stock', 'Low stock', 'Fill up to', 'Pack size', 'Supplier', 'Track stock', 'Variable price']];
   for (const i of store.activeItems()) {
-    rows.push([i.name, i.category, i.sku, i.barcode, i.unit, i.price, Math.round(num(i.cost) * 100) / 100, i.stock, i.minStock, i.maxStock, i.packSize, store.supplier(i.supplierId)?.name || '']);
+    rows.push([i.name, i.category, i.sku, i.barcode, i.unit, i.variablePrice ? '' : i.price, Math.round(num(i.cost) * 100) / 100, i.service ? '' : i.stock, i.minStock, i.maxStock, i.packSize, store.supplier(i.supplierId)?.name || '', i.service ? 'N' : 'Y', i.variablePrice ? 'Y' : 'N']);
   }
   downloadFile(`items-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');
 }
@@ -239,6 +246,11 @@ export function mapColumns(header) {
     cost: find(/^cost$/, /^purchase cost$/, /^cost price$/),
     stock: find(/^in stock/, /^stock$/, /^quantity$/, /^qty$/),
     minStock: find(/^low stock/, /^min/),
+    maxStock: find(/^optimal stock/, /^fill up to$/, /^max/),
+    track: find(/^track stock$/),
+    service: find(/^service$/),
+    variable: find(/^variable price$/),
+    byWeight: find(/^sold by weight$/),
     supplier: find(/^primary supplier$/, /^supplier$/),
     unit: find(/^unit$/),
   };
@@ -259,11 +271,17 @@ export function rowsFromCsv(text) {
     else { lastName = name; lastHandle = handle; }
     const opts = [get(r, 'opt1'), get(r, 'opt2')].filter(Boolean).join(' ');
     if (!name) continue;
+    const yes = (k) => /^(y|yes|true|1)$/i.test(get(r, k));
+    const no = (k) => /^(n|no|false|0)$/i.test(get(r, k));
     out.push({
       name: opts ? `${name} ${opts}` : name,
       sku: get(r, 'sku'), barcode: get(r, 'barcode'), category: get(r, 'category'),
       price: get(r, 'price'), cost: get(r, 'cost'), stock: get(r, 'stock'),
-      minStock: get(r, 'minStock'), supplier: get(r, 'supplier'), unit: get(r, 'unit'),
+      minStock: get(r, 'minStock'), maxStock: get(r, 'maxStock'), supplier: get(r, 'supplier'),
+      unit: get(r, 'unit') || (yes('byWeight') ? 'kg' : ''),
+      // Loyverse: "Track stock" = N means a service; a blank price means "price entered at sale".
+      service: yes('service') || no('track'),
+      variablePrice: yes('variable') || (m.price >= 0 && get(r, 'price') === ''),
     });
   }
   return out;

@@ -230,6 +230,33 @@ with sync_playwright() as p:
     go('#/sell'); pg.fill('#pos-search', '600100'); pg.press('#pos-search', 'Enter'); pg.wait_for_timeout(200)
     check(pg.locator('.tile.in', has_text='Rice').count() == 1, 'scanning a barcode adds the item')
 
+    # --- Loyverse services (Track stock = N) and variable-price items (blank price)
+    csv2 = ('Handle,SKU,Name,Category,Track stock,Default price,Cost,In stock [Main],Low stock [Main],Optimal stock [Main]\n'
+            'photocopy,10050,Photocopy,Offline Serives,N,100,0,,,\n'
+            'online-app,10051,online Application,Goods,N,,0,,,\n'
+            'chalk,10024,Chalk,Goods,Y,25,10,162,50,300\n')
+    pg.evaluate("sessionStorage.removeItem('cart')"); go('#/home'); go('#/stock'); pg.click('[data-act=import]'); pg.wait_for_timeout(200)
+    dlg().locator('input[type=file]').set_input_files(files=[{'name': 'export_items.csv', 'mimeType': 'text/csv', 'buffer': csv2.encode()}])
+    pg.wait_for_timeout(300); submit('Import'); pg.wait_for_timeout(300)
+    check(item(pg, 'Photocopy')['service'] is True and item(pg, 'Photocopy')['stock'] == 0, 'Track stock = N imported as a service')
+    check(item(pg, 'online Application')['variablePrice'] is True, 'blank price imported as variable price')
+    ch = item(pg, 'Chalk')
+    check(ch['minStock'] == 50 and ch['maxStock'] == 300 and ch['sku'] == '10024' and ch['service'] is False, 'low stock and optimal stock levels imported')
+    check(pg.locator('#stock-list tr', has_text='online Application').locator('text=Variable').count() == 1, 'variable price shown in the stock list')
+    go('#/sell')
+    if pg.locator('[data-clear]').count(): pg.locator('[data-clear]').first.dispatch_event('click'); pg.wait_for_timeout(150)
+    check('Enter price' in pg.locator('.tile', has_text='online Application').inner_text(), 'variable-price tile says Enter price')
+    pg.locator('.tile', has_text='online Application').click(); pg.wait_for_timeout(200)
+    check(dlg().locator('[name=price]').count() == 1, 'variable-price item asks for the price')
+    dlg().locator('[name=price]').fill('5000'); submit('Add to sale')
+    pg.locator('.tile', has_text='Photocopy').click(); pg.locator('.tile', has_text='Photocopy').click(); pg.wait_for_timeout(150)
+    if W < 900: pg.click('#cart-bar'); pg.wait_for_timeout(150)
+    pg.click('[data-charge]'); pg.wait_for_timeout(200); submit('Complete sale'); pg.wait_for_timeout(300)
+    last = max(data(pg)['sales'].values(), key=lambda x: x['ts'])
+    check(last['total'] == 5200, f"sale with typed price 5,000 + 2 photocopies = 5,200 (got {last['total']})")
+    check(item(pg, 'Photocopy')['stock'] == 0, 'service stock not reduced by a sale')
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
+
     # --- Screens on this size
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
         go(h); pg.wait_for_timeout(300)
