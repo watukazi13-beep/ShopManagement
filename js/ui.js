@@ -171,27 +171,36 @@ export function parseCsv(text) {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
-/** Print an HTML document (receipts, RFQs, reports) in a hidden frame. */
-export function printHtml(title, inner) {
-  const frame = document.createElement('iframe');
-  frame.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
-  document.body.append(frame);
-  const doc = frame.contentDocument;
-  doc.open();
-  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
-  <style>
-    body{font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#111;margin:24px}
-    h1{font-size:20px;margin:0 0 2px} h2{font-size:15px;margin:18px 0 6px}
-    .muted{color:#555} table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #ccc;vertical-align:top}
-    th{background:#f1f1f1} .r{text-align:right} .tot td{font-weight:700;border-top:2px solid #111}
-    .head{display:flex;justify-content:space-between;gap:24px;border-bottom:2px solid #111;padding-bottom:10px}
-    .box{border:1px solid #bbb;padding:8px 10px;margin-top:12px} .sig{margin-top:40px;display:flex;gap:40px}
-    .sig div{flex:1;border-top:1px solid #111;padding-top:4px}
-    @page{margin:14mm}
-  </style></head><body>${inner}</body></html>`);
-  doc.close();
-  setTimeout(() => { frame.contentWindow.focus(); frame.contentWindow.print(); setTimeout(() => frame.remove(), 2000); }, 250);
+/**
+ * Show a printable document (receipt, quotation request, purchase order, report)
+ * full-screen with a "Save as PDF / Print" button. Printing shows only the document,
+ * so "Save as PDF" in the print dialog gives a clean PDF file on phones and computers.
+ */
+export function printHtml(title, inner, { autoPrint = false } = {}) {
+  document.getElementById('print-root')?.remove();
+  // A modal <dialog> sits above any open window, so "Back" returns to it.
+  const root = document.createElement('dialog');
+  root.id = 'print-root';
+  root.setAttribute('aria-label', title);
+  const logo = store.settings.logo ? `<img class="doc-logo" src="${esc(store.settings.logo)}" alt="">` : '';
+  root.innerHTML = `
+    <div class="doc-bar">
+      <button type="button" class="btn ghost" data-doc-close>${icon('back')}Back</button>
+      <b class="doc-title">${esc(title)}</b>
+      <button type="button" class="btn primary" data-doc-print>${icon('download')}Save as PDF / Print</button>
+    </div>
+    <div class="doc-scroll"><article class="doc">${logo}${inner}</article></div>`;
+  document.body.append(root);
+  document.body.classList.add('doc-open');
+  const oldTitle = document.title;
+  root.addEventListener('close', () => { root.remove(); document.body.classList.remove('doc-open'); document.title = oldTitle; });
+  const close = () => root.close();
+  const print = () => { document.title = title; window.print(); setTimeout(() => { document.title = oldTitle; }, 1000); };
+  root.showModal();
+  root.querySelector('[data-doc-close]').addEventListener('click', close);
+  root.querySelector('[data-doc-print]').addEventListener('click', print);
+  if (autoPrint) setTimeout(print, 300);
+  return { close, print, el: root };
 }
 
 export function emptyState(title, text, action = '') {

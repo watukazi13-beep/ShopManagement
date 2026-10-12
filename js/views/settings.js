@@ -3,8 +3,7 @@ import { num } from '../calc.js';
 import { esc, icon, toast, field, confirmBox, downloadFile, modal } from '../ui.js';
 import { APP_NAME, MAKER, AUTHOR, VERSION } from '../brand.js';
 
-let installPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
+import { installApp, isInstalled } from '../install.js';
 
 export default {
   title: 'Settings',
@@ -16,7 +15,7 @@ export default {
       const owners = store.shop?.owners || [];
       const members = Object.entries(store.shop?.members || {}).sort();
       const notif = 'Notification' in window ? Notification.permission : 'unsupported';
-      const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+      const standalone = isInstalled();
       el.innerHTML = `
         <div class="page-head"><h1>Settings</h1></div>
 
@@ -122,16 +121,7 @@ export default {
       if (a === 'notify') { await Notification.requestPermission(); draw(); }
       if (a === 'backup') downloadFile(`shop-backup-${new Date().toISOString().slice(0, 10)}.json`, store.exportJson(), 'application/json');
       if (a === 'connect') openConnect();
-      if (a === 'install') {
-        if (installPrompt) { installPrompt.prompt(); installPrompt = null; }
-        else modal({
-          title: 'Install the app',
-          body: `<p><b>Android (Chrome):</b> tap the ⋮ menu, then <b>Add to Home screen</b> or <b>Install app</b>.</p>
-                 <p><b>iPhone / iPad (Safari):</b> tap the Share button, then <b>Add to Home Screen</b>.</p>
-                 <p><b>Computer (Chrome or Edge):</b> click the install icon at the right end of the address bar.</p>`,
-          actions: '<button class="btn primary">OK</button>',
-        });
-      }
+      if (a === 'install') installApp();
       const rm = e.target.closest('[data-remove]')?.dataset.remove;
       if (rm && await confirmBox(`Remove access for ${rm}?`, { ok: 'Remove', danger: true })) { try { store.setShopMember(rm, null); toast('Access removed'); } catch (err) { toast(err.message, { kind: 'err' }); } }
     });

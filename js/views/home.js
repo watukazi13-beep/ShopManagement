@@ -4,6 +4,7 @@ import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from
 import { showReceipt } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
 import { openExpenseForm } from './money.js';
+import { installApp, isInstalled, onInstallChange } from '../install.js';
 
 export default {
   title: 'Home',
@@ -19,7 +20,14 @@ export default {
       const hour = new Date().getHours();
       const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
+      let hideInstall = isInstalled();
+      try { hideInstall ||= localStorage.getItem('install-dismissed') === '1'; } catch { /* ignore */ }
       el.innerHTML = `
+        ${hideInstall ? '' : `<section class="card install-card">
+          <div class="grow"><b>Install Shop Manager on this device</b><small>Opens like a normal app from your home screen or desktop, and works without internet.</small></div>
+          <button class="btn primary" data-act="install">${icon('download')}Install</button>
+          <button class="icon-btn" data-act="install-later" aria-label="Not now">${icon('x')}</button>
+        </section>`}
         <section class="hero">
           <p class="hello">${hello}${store.user?.name && store.mode !== 'local' ? ', ' + esc(store.user.name.split(' ')[0]) : ''}</p>
           <p class="hero-label">Sold today</p>
@@ -96,6 +104,8 @@ export default {
     };
     el.addEventListener('click', (e) => {
       const a = e.target.closest('[data-act]')?.dataset.act;
+      if (a === 'install') installApp();
+      if (a === 'install-later') { try { localStorage.setItem('install-dismissed', '1'); } catch { /* ignore */ } draw(); }
       if (a === 'receive') openPurchaseForm();
       if (a === 'expense') openExpenseForm();
       if (a === 'notify') Notification.requestPermission().then(draw);
@@ -107,6 +117,7 @@ export default {
       if (sid) showReceipt(store.data.sales.find((s) => s.id === sid));
     });
     draw();
-    return { update: draw };
+    const off = onInstallChange(draw);
+    return { update: draw, destroy: off };
   },
 };

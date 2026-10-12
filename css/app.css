@@ -489,3 +489,38 @@ code { font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-
 #brand { min-width: 0; }
 #shop-caret .caret { width: 18px; height: 18px; margin-left: 2px; color: var(--muted); flex: none; }
 .mg-table td small { display: block; }
+
+/* ---------- Documents: on-screen preview and print / Save as PDF ---------- */
+#print-root { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #e9ebe6; }
+#print-root[open] { display: flex; flex-direction: column; }
+#print-root::backdrop { background: rgba(0,0,0,.3); }
+#print-root .doc-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px calc(10px) 12px; padding-top: calc(10px + env(safe-area-inset-top)); background: var(--surface); border-bottom: 1px solid var(--line); }
+#print-root .doc-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#print-root .doc-scroll { flex: 1; overflow: auto; padding: 16px 10px 40px; }
+.doc { background: #fff; color: #111; max-width: 800px; margin: 0 auto; padding: 28px 26px; box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.doc h1 { font-size: 20px; margin: 0 0 2px; color: #111; } .doc h2 { font-size: 15px; margin: 18px 0 6px; color: #111; }
+.doc .muted { color: #555; } .doc table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.doc th, .doc td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #ccc; vertical-align: top; color: #111; }
+.doc th { background: #f1f1f1; } .doc .r { text-align: right; } .doc .tot td { font-weight: 700; border-top: 2px solid #111; }
+.doc .head { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #111; padding-bottom: 10px; flex-wrap: wrap; }
+.doc .box { border: 1px solid #bbb; padding: 8px 10px; margin-top: 12px; } .doc .sig { margin-top: 40px; display: flex; gap: 40px; }
+.doc .sig div { flex: 1; border-top: 1px solid #111; padding-top: 4px; }
+.doc .doc-logo { max-height: 64px; max-width: 180px; display: block; margin-bottom: 8px; }
+.doc small { font-size: 11px; }
+@media (max-width: 520px) { .doc { padding: 18px 14px; font-size: 12px; } .doc-bar .btn { padding-left: 10px; padding-right: 10px; } }
+@media print {
+  @page { margin: 14mm; }
+  body.doc-open > *:not(#print-root) { display: none !important; }
+  #print-root, #print-root[open] { position: static; background: none; display: block; width: auto; height: auto; overflow: visible; }
+  #print-root .doc-bar { display: none; }
+  #print-root .doc-scroll { padding: 0; overflow: visible; }
+  .doc { box-shadow: none; max-width: none; padding: 0; margin: 0; }
+}
+
+.install-card { display: flex; align-items: center; gap: 12px; border-color: var(--green); background: var(--green-2); }
+.install-card small { display: block; color: var(--muted); margin-top: 2px; }
+.install-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 18px; }
+.steps-list li { margin: 6px 0; }
+.doc td.r, .doc th.r { white-space: nowrap; }
+@media (max-width: 520px) { .doc th, .doc td { padding: 5px 4px; } }

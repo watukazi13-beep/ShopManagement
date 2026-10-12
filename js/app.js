@@ -3,6 +3,7 @@ import { firebaseConfig } from './config.js';
 import { createLocalBackend } from './backend-local.js';
 import { esc, icon, toast, modal } from './ui.js';
 import { MAKER, AUTHOR } from './brand.js';
+import { installApp, isInstalled } from './install.js';
 import home from './views/home.js';
 import sell from './views/sell.js';
 import stock from './views/stock.js';
@@ -33,7 +34,9 @@ function gate(title, html) {
   root.innerHTML = `<main class="gate"><div class="gate-card">
     <div class="logo">${icon('stock')}</div>
     <h1>${esc(title)}</h1>${html}
+    ${isInstalled() ? '' : `<button type="button" class="link install-link" id="g-install">${icon('download')}Install this app on this device</button>`}
     <p class="credit">Made by ${esc(MAKER)} · Author: ${esc(AUTHOR)}</p></div></main>`;
+  root.querySelector('#g-install')?.addEventListener('click', installApp);
 }
 
 function showSetup() {
@@ -194,6 +197,7 @@ function route() {
   el.tabIndex = -1;
   el.className = `view view-${view}`;
   old.replaceWith(el);
+  current?.destroy?.();
   current = VIEWS[view].mount(el, new URLSearchParams(qs || '')) || null;
   el.scrollTop = 0;
   window.scrollTo(0, 0);
