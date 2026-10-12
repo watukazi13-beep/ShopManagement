@@ -2,6 +2,7 @@ import { store } from './store.js';
 import { firebaseConfig } from './config.js';
 import { createLocalBackend } from './backend-local.js';
 import { esc, icon, toast, modal } from './ui.js';
+import { MAKER, AUTHOR } from './brand.js';
 import home from './views/home.js';
 import sell from './views/sell.js';
 import stock from './views/stock.js';
@@ -29,7 +30,8 @@ function gate(title, html) {
   document.body.classList.remove('has-shell');
   root.innerHTML = `<main class="gate"><div class="gate-card">
     <div class="logo">${icon('stock')}</div>
-    <h1>${esc(title)}</h1>${html}</div></main>`;
+    <h1>${esc(title)}</h1>${html}
+    <p class="credit">Made by ${esc(MAKER)} · Author: ${esc(AUTHOR)}</p></div></main>`;
 }
 
 function showSetup() {
@@ -107,6 +109,7 @@ function showShell() {
     <nav class="nav" aria-label="Main">
       ${links.map(([id, label, ic]) => `<a href="#/${id}" data-nav="${id}">${icon(ic)}<span>${label}</span></a>`).join('')}
       <a href="#/settings" data-nav="settings" class="nav-settings">${icon('settings')}<span>Settings</span></a>
+      <p class="nav-credit">Made by ${esc(MAKER)}<br>Author: ${esc(AUTHOR)}</p>
     </nav>
     <main id="view" class="view" tabindex="-1"></main>`;
   route();

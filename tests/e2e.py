@@ -44,6 +44,8 @@ with sync_playwright() as p:
         dlg().get_by_role('button', name=label, exact=True).click(); pg.wait_for_timeout(250)
 
     pg.goto(URL); pg.wait_for_timeout(500)
+    credit = 'Made by Greenlight Stationeries · Author: Michael Kepha'
+    check(pg.locator('.gate-card .credit').inner_text() == credit, 'credit shown on the start screen')
     pg.click('#g-local'); pg.wait_for_timeout(900)
     check(pg.locator('.hero-figure').inner_text().startswith('TSh 0'), 'home loads in device mode')
     check(pg.locator('.getting-started').count() == 1, 'getting-started guide shows on an empty shop')
@@ -54,6 +56,9 @@ with sync_playwright() as p:
     pg.fill('#shop-form [name=phone]', '0755 111 222')
     pg.click('#shop-form button.primary'); pg.wait_for_timeout(300)
     check(pg.locator('#shop-name').inner_text() == 'Duka la Mama', 'shop name saved and shown in header')
+    about = pg.locator('.about').inner_text()
+    check('Greenlight Stationeries' in about and 'Michael Kepha' in about, 'credit shown in Settings → About')
+    check(pg.locator('.nav-credit').is_visible() == (W >= 900), 'credit in the side menu on computers only')
 
     # --- Supplier
     go('#/orders?tab=suppliers')

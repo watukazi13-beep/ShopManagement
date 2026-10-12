@@ -196,6 +196,7 @@ details.more summary { cursor: pointer; color: var(--green); font-weight: 600; p
   background: var(--bad); color: #fff; font-size: .68rem; line-height: 18px; text-align: center;
 }
 .nav-settings { display: none !important; }
+.nav-credit { display: none; }
 
 .view { padding: calc(var(--top) + env(safe-area-inset-top) + 16px) 16px calc(var(--bottom) + env(safe-area-inset-bottom) + 24px); max-width: 1180px; margin: 0 auto; outline: none; }
 
@@ -210,6 +211,7 @@ details.more summary { cursor: pointer; color: var(--green); font-weight: 600; p
   .nav a.on::before { display: none; }
   .nav a[data-badge]:not([data-badge=""])::after { position: static; margin-left: auto; }
   .nav-settings { display: flex !important; margin-top: auto; }
+  .nav-credit { display: block; margin: 10px 14px 0; font-size: .72rem; line-height: 1.45; color: var(--muted); }
   .view { margin-left: 210px; padding: calc(var(--top) + 24px) 32px 40px; }
   .topbar { padding-left: 20px; }
 }
@@ -221,6 +223,8 @@ details.more summary { cursor: pointer; color: var(--green); font-weight: 600; p
 .gate-card .btn { margin-top: 10px; }
 .gate-card p { color: var(--muted); }
 .gate-card .banner { margin-top: 14px; }
+.gate-card .credit { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); font-size: .8rem; text-align: center; }
+.about p { margin: 4px 0; }
 .loading { color: var(--muted); padding: 40px 0; text-align: center; }
 
 /* ---------- Cards, lists, stats ---------- */

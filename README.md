@@ -1,5 +1,7 @@
 # Shop Manager
 
+Made by **Greenlight Stationeries** · Author: **Michael Kepha**
+
 A simple app for running a shop: sell, keep stock, record expenses, and see your real monthly profit.
 It works on phone, tablet and computer, keeps working with no internet, and syncs when the connection comes back.
 Only people you give access to can open it. Hosting and sync are free.

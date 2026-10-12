@@ -1,6 +1,7 @@
 import { store } from '../store.js';
 import { num } from '../calc.js';
 import { esc, icon, toast, field, confirmBox, downloadFile, modal } from '../ui.js';
+import { APP_NAME, MAKER, AUTHOR, VERSION } from '../brand.js';
 
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
@@ -80,7 +81,12 @@ export default {
           <button class="btn ghost" data-act="backup">${icon('download')}Download backup</button>
         </section>` : ''}
 
-        <p class="muted small center">Shop Manager · ${store.mode === 'local' ? 'trial mode' : 'synced with Firebase'}</p>`;
+        <section class="card about">
+          <div class="card-head"><h2>About</h2></div>
+          <p><b>${esc(APP_NAME)}</b> · version ${esc(VERSION)} · ${store.mode === 'local' ? 'trial mode' : 'synced with Firebase'}</p>
+          <p>Made by <b>${esc(MAKER)}</b></p>
+          <p>Author: <b>${esc(AUTHOR)}</b></p>
+        </section>`;
 
       el.querySelector('#shop-form')?.addEventListener('submit', (e) => {
         e.preventDefault();

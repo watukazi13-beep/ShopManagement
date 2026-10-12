@@ -1,7 +1,7 @@
 {
   "name": "Shop Manager",
   "short_name": "Shop",
-  "description": "Sales, stock, costs and monthly profit for your shop. Works offline.",
+  "description": "Sales, stock, costs and monthly profit for your shop. Works offline. Made by Greenlight Stationeries; author Michael Kepha.",
   "start_url": "./#/home",
   "scope": "./",
   "display": "standalone",
