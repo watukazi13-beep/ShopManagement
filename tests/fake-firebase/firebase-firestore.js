@@ -101,6 +101,10 @@ function allowed(kind, path, data, old) {
   if (r === 'owner' || r === 'manager') return true;
   const recv = db[`shops/${shopId}/meta/settings`]?.staffCanReceive === true;
   if (col === 'sales' && kind === 'set' && !old) return data.by === u.email;
+  if (col === 'customers' && kind !== 'delete') return true;
+  if (col === 'payments' && kind === 'set' && !old) return data.by === u.email;
+  if (col === 'shifts' && kind === 'set' && !old) return true;
+  if (col === 'shifts' && kind === 'update') return old?.by === u.email;
   if (col === 'items' && kind === 'update') return Object.keys(data).every((k) => (recv ? ['stock', 'updatedAt', 'cost', 'lastCost', 'updatedBy'] : ['stock', 'updatedAt']).includes(k));
   if (col === 'pos' && kind === 'update' && recv) return Object.keys(data).every((k) => ['lines', 'status', 'closedShort', 'receivedAt', 'updatedAt', 'updatedBy'].includes(k));
   if (col === 'purchases' && kind === 'set' && !old) return recv;

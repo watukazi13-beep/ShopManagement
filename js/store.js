@@ -1,7 +1,7 @@
 // App state + every action that changes data.
 import {
   DAY, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
-  stockValue, profitAndLoss, daySummary,
+  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -20,11 +20,15 @@ export const DEFAULT_SETTINGS = {
   expenseCategories: ['Rent', 'Salaries', 'Electricity', 'Water', 'Transport', 'Airtime & Internet', 'Taxes & Licences', 'Repairs', 'Other'],
   payMethods: ['Cash', 'M-Pesa', 'Tigo Pesa', 'Airtel Money', 'Card', 'Credit'],
   staffCanReceive: false,
+  taxRate: 0,
+  taxName: 'VAT',
+  receiptHeader: '',
+  receiptFooter: 'Thank you!',
   poNote: 'Please supply the items below. Quote this order number on your delivery note and invoice.',
 };
 
-const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses'];
-const MASTER = ['items', 'suppliers', 'rfqs', 'pos'];
+const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments'];
+const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers'];
 
 export const store = {
   backend: null,
@@ -40,7 +44,7 @@ export const store = {
   pending: false,
   online: navigator.onLine,
   since: 0,
-  data: { items: [], suppliers: [], rfqs: [], pos: [], sales: [], purchases: [], adjustments: [], expenses: [] },
+  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [] },
   settings: { ...DEFAULT_SETTINGS },
   _loaded: new Set(),
   _subs: new Set(),
@@ -51,6 +55,8 @@ export const store = {
 
   item(id) { return this._itemMap?.get(id); },
   supplier(id) { return this.data.suppliers.find((s) => s.id === id); },
+  customer(id) { return this.data.customers.find((c) => c.id === id); },
+  isCreditPay(pay) { return /credit|deni|mkopo/i.test(pay || ''); },
   activeItems() { return this.data.items.filter((i) => i.active !== false).sort((a, b) => a.name.localeCompare(b.name)); },
   can(what) {
     if (what === 'manage') return this.isAdmin; // all shops: management only
@@ -195,7 +201,7 @@ export const store = {
   },
 
   // ---------- Sales ----------
-  recordSale({ lines, discount = 0, pay = 'Cash', customer = '', note = '' }) {
+  recordSale({ lines, discount = 0, pay = 'Cash', customer = '', customerId = '', note = '' }) {
     const ts = Date.now();
     const full = lines
       .filter((l) => num(l.qty) > 0)
@@ -204,10 +210,17 @@ export const store = {
         return { itemId: l.itemId, name: it.name || l.name, qty: num(l.qty), price: money(l.price), cost: num(it.cost), unit: it.unit || 'pcs' };
       });
     if (!full.length) throw new Error('The cart is empty');
-    const totals = cartTotals(full, discount);
+    const sub = full.reduce((t, l) => t + l.qty * l.price, 0);
+    // Discount may be typed as an amount ("500") or a percentage ("10%").
+    const totals = cartTotals(full, parseDiscount(discount, sub));
+    const cust = customerId ? this.customer(customerId) : null;
+    const credit = this.isCreditPay(pay);
+    if (credit && !cust) throw new Error('Choose the customer for a credit sale');
     const id = this.backend.newId('sales');
     const sale = {
-      no: docNo('S', ts), ts, date: dayKey(ts), lines: full, ...totals, pay, customer, note,
+      no: docNo('S', ts), ts, date: dayKey(ts), lines: full, ...totals, pay,
+      tax: taxIncluded(totals.total, this.settings.taxRate), taxRate: num(this.settings.taxRate),
+      customerId: cust?.id || '', customer: cust?.name || customer || '', credit, note,
       voided: false, by: this.user?.email || '', byName: this.user?.name || '',
     };
     const before = new Map(this.plan().map((p) => [p.item.id, p.status]));
@@ -216,18 +229,83 @@ export const store = {
       const it = this.item(l.itemId);
       if (it && !it.service) ops.push({ type: 'incr', col: 'items', id: l.itemId, field: 'stock', by: -l.qty });
     }
+    if (cust) {
+      ops.push({ type: 'incr', col: 'customers', id: cust.id, field: 'spent', by: totals.total, data: { lastVisit: ts } });
+      if (credit) ops.push({ type: 'incr', col: 'customers', id: cust.id, field: 'balance', by: totals.total });
+    }
     this.backend.write(ops);
     this._alertNewLows(before);
-    return { ...sale, id };
+    return { ...sale, id, balanceAfter: cust && credit ? num(cust.balance) + totals.total : undefined };
   },
   voidSale(sale, reason = '') {
+    if (sale.refunded) throw new Error('Part of this sale was refunded — refund the rest instead of cancelling it');
     const ops = [{ type: 'merge', col: 'sales', id: sale.id, data: { voided: true, voidReason: reason, voidedAt: Date.now(), voidedBy: this.user?.email || '' } }];
     for (const l of sale.lines) {
       const it = this.item(l.itemId);
       if (it && !it.service) ops.push({ type: 'incr', col: 'items', id: l.itemId, field: 'stock', by: num(l.qty) });
     }
+    if (sale.customerId && this.customer(sale.customerId)) {
+      ops.push({ type: 'incr', col: 'customers', id: sale.customerId, field: 'spent', by: -num(sale.total) });
+      if (sale.credit) ops.push({ type: 'incr', col: 'customers', id: sale.customerId, field: 'balance', by: -num(sale.total) });
+    }
     this.backend.write(ops);
   },
+  /** Refund some or all items of a sale. qtys: { itemId: quantity to return }. */
+  refundSale(sale, qtys, reason = '') {
+    const rf = refundTotals(sale, qtys);
+    if (!rf.lines.length) throw new Error('Choose what is being returned');
+    const ts = Date.now();
+    const id = this.backend.newId('sales');
+    const refundedQty = { ...(sale.refundedQty || {}) };
+    for (const l of rf.lines) refundedQty[l.itemId] = num(refundedQty[l.itemId]) + Math.abs(l.qty);
+    const doc = {
+      type: 'refund', refundOf: sale.id, refundOfNo: sale.no, no: docNo('R', ts), ts, date: dayKey(ts),
+      lines: rf.lines, subtotal: rf.subtotal, discount: rf.discount, total: rf.total, cogs: rf.cogs,
+      tax: -taxIncluded(-rf.total, sale.taxRate ?? this.settings.taxRate), pay: sale.pay,
+      customerId: sale.customerId || '', customer: sale.customer || '', credit: !!sale.credit, note: reason,
+      voided: false, by: this.user?.email || '', byName: this.user?.name || '',
+    };
+    const ops = [
+      { type: 'set', col: 'sales', id, data: doc },
+      { type: 'merge', col: 'sales', id: sale.id, data: { refundedQty, refunded: num(sale.refunded) - rf.total, ...this._stamp() } },
+    ];
+    for (const l of rf.lines) {
+      const it = this.item(l.itemId);
+      if (it && !it.service) ops.push({ type: 'incr', col: 'items', id: l.itemId, field: 'stock', by: Math.abs(l.qty) });
+    }
+    if (sale.customerId && this.customer(sale.customerId)) {
+      ops.push({ type: 'incr', col: 'customers', id: sale.customerId, field: 'spent', by: rf.total });
+      if (sale.credit) ops.push({ type: 'incr', col: 'customers', id: sale.customerId, field: 'balance', by: rf.total });
+    }
+    this.backend.write(ops);
+    return { ...doc, id };
+  },
+
+  // ---------- Customers ----------
+  saveCustomer(c) {
+    const id = c.id || this.backend.newId('customers');
+    const data = { name: String(c.name || '').trim(), phone: String(c.phone || '').trim(), email: String(c.email || '').trim(), note: String(c.note || '').trim(), creditLimit: money(c.creditLimit), ...this._stamp() };
+    if (!data.name) throw new Error('Enter the customer’s name');
+    if (c.id) this.backend.write([{ type: 'merge', col: 'customers', id, data }]);
+    else this.backend.write([{ type: 'set', col: 'customers', id, data: { ...data, balance: 0, spent: 0, createdAt: Date.now() } }]);
+    return id;
+  },
+  deleteCustomer(c) {
+    if (Math.round(num(c.balance))) throw new Error(`${c.name} still owes ${money(c.balance).toLocaleString('en-US')} — record the payment first`);
+    this.backend.write([{ type: 'delete', col: 'customers', id: c.id }]);
+  },
+  /** A customer pays back what they owe. */
+  receivePayment(c, { amount, method = 'Cash', note = '', ts = Date.now() }) {
+    const amt = money(amount);
+    if (!(amt > 0)) throw new Error('Enter the amount paid');
+    const id = this.backend.newId('payments');
+    this.backend.write([
+      { type: 'set', col: 'payments', id, data: { no: docNo('PAY', ts), ts, date: dayKey(ts), customerId: c.id, customer: c.name, amount: amt, method, note, by: this.user?.email || '', byName: this.user?.name || '' } },
+      { type: 'incr', col: 'customers', id: c.id, field: 'balance', by: -amt },
+    ]);
+    return id;
+  },
+  owedByCustomers() { return money(this.data.customers.reduce((t, c) => t + Math.max(0, num(c.balance)), 0)); },
 
   // ---------- Stock in / adjustments ----------
   receivePurchase({ supplierId = '', ref = '', ts = Date.now(), lines, paid = true, note = '', rfqId = '', poId = '', poNo = '', extraOps = [] }) {

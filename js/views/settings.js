@@ -62,6 +62,15 @@ export default {
             ${field('Address', `<input name="address" value="${esc(s.address)}">`)}
             ${field('TIN', `<input name="tin" value="${esc(s.tin)}">`)}
           </div>
+          <h3>Receipts and tax</h3>
+          <div class="grid2">
+            ${field('Receipt header', `<input name="receiptHeader" value="${esc(s.receiptHeader || '')}" placeholder="e.g. Karibu!">`)}
+            ${field('Receipt footer', `<input name="receiptFooter" value="${esc(s.receiptFooter || 'Thank you!')}">`)}
+          </div>
+          <div class="grid2">
+            ${field('Tax name', `<input name="taxName" value="${esc(s.taxName || 'VAT')}">`)}
+            ${field('Tax rate (%) included in prices', `<input name="taxRate" type="number" inputmode="decimal" min="0" max="50" step="any" value="${s.taxRate || 0}">`, '0 = no tax shown. Tanzania VAT is 18% for registered businesses.')}
+          </div>
           <h3>Restocking</h3>
           <div class="grid3">
             ${field('Supplier delivery time (days)', `<input name="leadDays" type="number" min="1" value="${s.leadDays}">`, 'Alert early enough to cover this')}
@@ -98,6 +107,7 @@ export default {
         store.saveSettings({
           shopName: v.shopName.trim(), phone: v.phone, email: v.email, address: v.address, tin: v.tin,
           leadDays: num(v.leadDays) || 7, coverDays: num(v.coverDays) || 30, windowDays: num(v.windowDays) || 30,
+          receiptHeader: v.receiptHeader, receiptFooter: v.receiptFooter, taxName: v.taxName || 'VAT', taxRate: Math.max(0, num(v.taxRate)),
           autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on',
           payMethods: list(v.payMethods).length ? list(v.payMethods) : ['Cash'],
           expenseCategories: list(v.expenseCategories),

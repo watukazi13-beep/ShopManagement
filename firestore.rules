@@ -106,9 +106,26 @@ service cloud.firestore {
         allow update, delete: if isBoss();
       }
 
+      // Customers: sellers add them at the till and their credit sales change the balance.
+      match /customers/{id} {
+        allow read, create, update: if isMember();
+        allow delete: if isBoss();
+      }
+      // Payments customers make on what they owe; shifts (cash drawer) opened by whoever is selling.
+      match /payments/{id} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.by == myEmail();
+        allow update, delete: if isBoss();
+      }
+      match /shifts/{id} {
+        allow read, create: if isMember();
+        allow update: if isBoss() || (isMember() && resource.data.by == myEmail());
+        allow delete: if isBoss();
+      }
+
       match /{col}/{id} {
-        allow read: if isMember() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'customers', 'payments', 'shifts', 'quotes', 'invoices', 'closings', 'tickets'];
-        allow write: if isBoss() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'customers', 'payments', 'shifts', 'quotes', 'invoices', 'closings', 'tickets'];
+        allow read: if isMember() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'quotes', 'invoices', 'closings'];
+        allow write: if isBoss() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'quotes', 'invoices', 'closings'];
       }
     }
 

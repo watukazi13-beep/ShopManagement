@@ -1,5 +1,5 @@
 import { store } from '../store.js';
-import { cartTotals, num } from '../calc.js';
+import { cartTotals, num, parseDiscount, taxIncluded, refundTotals } from '../calc.js';
 import { esc, fmt, fmtQty, fmtDateTime, icon, modal, toast, printHtml, confirmBox, emptyState, field } from '../ui.js';
 
 // The cart survives switching screens (kept for this browser tab).
@@ -184,30 +184,67 @@ export default {
       const t = cartTotals(lines.map((l) => ({ ...l, cost: 0 })));
       const methods = store.settings.payMethods || ['Cash'];
       const boss = store.can('discount');
+      const rate = num(store.settings.taxRate);
+      const customers = [...store.data.customers].sort((a, b) => a.name.localeCompare(b.name));
+      const label = (c) => `${c.name}${c.phone ? ' — ' + c.phone : ''}`;
       modal({
         title: 'Take payment',
         body: `
           <p class="big-total" id="co-total">${fmt(t.total)}</p>
+          <p class="muted small center" id="co-sub"></p>
           <div class="field"><span class="field-label">Paid with</span>
             <div class="chips wrap" role="radiogroup">${methods.map((m, i) => `<label class="chip radio"><input type="radio" name="pay" value="${esc(m)}" ${i === 0 ? 'checked' : ''}>${esc(m)}</label>`).join('')}</div>
           </div>
-          ${boss ? field('Discount (TSh)', '<input name="discount" type="number" inputmode="numeric" min="0" step="1" value="0">') : ''}
+          ${boss ? `<div class="field"><span class="field-label">Discount</span>
+            <div class="disc-row"><input name="discount" inputmode="decimal" autocomplete="off" placeholder="0 or 10%" aria-label="Discount in shillings or percent">
+            <button type="button" class="chip" data-d="5%">5%</button><button type="button" class="chip" data-d="10%">10%</button><button type="button" class="chip" data-d="">None</button></div>
+            <small>Type an amount (500) or a percentage (10%).</small></div>` : ''}
           ${field('Cash received (optional)', '<input name="cash" type="number" inputmode="numeric" min="0" step="1" placeholder="To work out change">', '')}
           <p class="change" id="co-change"></p>
-          ${field('Customer (optional)', '<input name="customer" autocomplete="off" placeholder="Name or phone — useful for credit sales">')}`,
+          ${field('Customer', `<input name="customer" list="cust-dl" autocomplete="off" placeholder="Optional — needed for credit sales"><datalist id="cust-dl">${customers.map((c) => `<option value="${esc(label(c))}">`).join('')}</datalist>`, '')}
+          <p class="small" id="co-cust"></p>`,
         actions: '<button class="btn ghost" value="cancel">Back</button><button class="btn accent big">Complete sale</button>',
         onMount: (dlg) => {
+          const findCust = () => {
+            const v = dlg.querySelector('[name=customer]').value.trim().toLowerCase();
+            return v ? customers.find((c) => label(c).toLowerCase() === v || c.name.toLowerCase() === v || (c.phone && c.phone === v)) : null;
+          };
           const upd = () => {
-            const disc = num(dlg.querySelector('[name=discount]')?.value);
-            const tot = cartTotals(lines.map((l) => ({ ...l, cost: 0 })), disc).total;
+            const discIn = dlg.querySelector('[name=discount]')?.value || '';
+            const disc = parseDiscount(discIn, t.subtotal);
+            const tot = t.subtotal - disc;
             dlg.querySelector('#co-total').textContent = fmt(tot);
+            dlg.querySelector('#co-sub').innerHTML = [disc ? `${fmt(t.subtotal)} − discount ${fmt(disc)}` : '', rate ? `includes ${esc(store.settings.taxName || 'VAT')} ${rate}%: ${fmt(taxIncluded(tot, rate))}` : ''].filter(Boolean).join(' · ');
             const cash = num(dlg.querySelector('[name=cash]').value);
             dlg.querySelector('#co-change').innerHTML = cash ? (cash >= tot ? `Change: <b>${fmt(cash - tot)}</b>` : `<span class="warn-text">Short by ${fmt(tot - cash)}</span>`) : '';
+            const pay = dlg.querySelector('[name=pay]:checked')?.value;
+            const c = findCust();
+            const typed = dlg.querySelector('[name=customer]').value.trim();
+            const credit = store.isCreditPay(pay);
+            let msg = '';
+            if (c) msg = `${esc(c.name)}${num(c.balance) > 0 ? ` owes <b>${fmt(c.balance)}</b>` : ''}${credit ? ` → will owe <b>${fmt(num(c.balance) + tot)}</b>` : ''}${credit && num(c.creditLimit) > 0 && num(c.balance) + tot > num(c.creditLimit) ? ` <span class="warn-text">(over their limit of ${fmt(c.creditLimit)})</span>` : ''}`;
+            else if (typed) msg = `New customer “${esc(typed)}” will be added.`;
+            else if (credit) msg = '<span class="warn-text">A credit sale needs a customer.</span>';
+            dlg.querySelector('#co-cust').innerHTML = msg;
           };
           dlg.addEventListener('input', upd);
+          dlg.addEventListener('change', upd);
+          dlg.querySelectorAll('[data-d]').forEach((b) => b.addEventListener('click', () => { dlg.querySelector('[name=discount]').value = b.dataset.d; upd(); }));
+          dlg._findCust = findCust;
+          upd();
         },
-        onSubmit: (v) => {
-          const sale = store.recordSale({ lines, discount: v.discount || 0, pay: v.pay, customer: v.customer || '' });
+        onSubmit: (v, { form }) => {
+          const dlgEl = form.closest('dialog');
+          let cust = dlgEl._findCust();
+          const typed = (v.customer || '').trim();
+          if (!cust && typed) {
+            // New customer typed at the till: "Name" or "Name — 0712…"
+            const [name, phone = ''] = typed.split(/\s+—\s+/);
+            const id = store.saveCustomer({ name, phone });
+            cust = { id, name, phone, balance: 0 };
+            store.data.customers = [...store.data.customers.filter((c) => c.id !== id), cust];
+          }
+          const sale = store.recordSale({ lines, discount: v.discount || 0, pay: v.pay, customerId: cust?.id || '', customer: cust?.name || '' });
           cart = []; saveCart();
           el.querySelector('.pos').classList.remove('show-cart');
           draw();
@@ -225,53 +262,110 @@ export default {
 
 export function receiptText(s) {
   const st = store.settings;
+  const refund = s.type === 'refund';
   return [
-    st.shopName, st.phone, '',
-    `Receipt ${s.no}`, fmtDateTime(s.ts), '',
+    st.shopName, st.phone, st.receiptHeader || null, '',
+    `${refund ? 'Refund' : 'Receipt'} ${s.no}${refund ? ` (for ${s.refundOfNo})` : ''}`, fmtDateTime(s.ts), s.customer ? `Customer: ${s.customer}` : null, '',
     ...s.lines.map((l) => `${l.name}\n  ${fmtQty(l.qty)} × ${fmt(l.price, { bare: true })} = ${fmt(l.qty * l.price, { bare: true })}`),
     '',
     s.discount ? `Discount: ${fmt(s.discount)}` : null,
     `TOTAL: ${fmt(s.total)}`,
-    `Paid: ${s.pay}`,
-    '', 'Thank you!',
+    s.tax ? `Includes ${st.taxName || 'VAT'} ${s.taxRate}%: ${fmt(s.tax)}` : null,
+    `${refund ? 'Refunded via' : 'Paid'}: ${s.pay}${s.credit ? ' (on account)' : ''}`,
+    s.balanceAfter !== undefined ? `Balance owed: ${fmt(s.balanceAfter)}` : null,
+    '', st.receiptFooter || 'Thank you!',
   ].filter((x) => x !== null).join('\n');
+}
+
+function receiptTable(s) {
+  const st = store.settings;
+  const rows = s.lines.map((l) => {
+    const back = num(s.refundedQty?.[l.itemId]);
+    return `<tr><td>${esc(l.name)}<br><small class="muted">${fmtQty(l.qty)} × ${fmt(l.price)}${back ? ` · ${fmtQty(back)} returned` : ''}</small></td><td class="r">${fmt(l.qty * l.price)}</td></tr>`;
+  }).join('');
+  return `<table class="receipt">${rows}
+      ${s.discount ? `<tr><td>Discount</td><td class="r">${s.discount > 0 ? '−' : '+'}${fmt(Math.abs(s.discount))}</td></tr>` : ''}
+      <tr class="tot"><td>${s.type === 'refund' ? 'Refund total' : 'Total'}</td><td class="r">${fmt(s.total)}</td></tr>
+      ${s.tax ? `<tr><td><small>Includes ${esc(st.taxName || 'VAT')} ${s.taxRate}%</small></td><td class="r"><small>${fmt(s.tax)}</small></td></tr>` : ''}
+      ${num(s.refunded) ? `<tr><td>Refunded</td><td class="r">−${fmt(s.refunded)}</td></tr>` : ''}</table>`;
+}
+
+export function printReceipt(s) {
+  const st = store.settings;
+  const refund = s.type === 'refund';
+  printHtml(`${refund ? 'Refund' : 'Receipt'} ${s.no}`, `
+    <div style="max-width:340px;margin:auto"><h1>${esc(st.shopName)}</h1>
+    <div class="muted">${esc(st.address)}<br>${esc(st.phone)}${st.tin ? '<br>TIN ' + esc(st.tin) : ''}</div>
+    ${st.receiptHeader ? `<p>${esc(st.receiptHeader)}</p>` : ''}
+    <p>${refund ? 'Refund' : 'Receipt'} <b>${esc(s.no)}</b>${refund ? ` for ${esc(s.refundOfNo)}` : ''}<br>${fmtDateTime(s.ts)} · ${esc(s.pay)}${s.credit ? ' (on account)' : ''}${s.customer ? `<br>Customer: ${esc(s.customer)}` : ''}</p>
+    ${receiptTable(s)}
+    ${s.balanceAfter !== undefined ? `<p>Balance owed: <b>${fmt(s.balanceAfter)}</b></p>` : ''}
+    <p style="text-align:center">${esc(st.receiptFooter || 'Thank you!')}</p></div>`);
 }
 
 export function showReceipt(s, { fresh = false } = {}) {
   if (!s) return;
-  const st = store.settings;
-  const rows = s.lines.map((l) => `<tr><td>${esc(l.name)}<br><small class="muted">${fmtQty(l.qty)} × ${fmt(l.price)}</small></td><td class="r">${fmt(l.qty * l.price)}</td></tr>`).join('');
-  const table = `<table class="receipt">${rows}
-      ${s.discount ? `<tr><td>Discount</td><td class="r">−${fmt(s.discount)}</td></tr>` : ''}
-      <tr class="tot"><td>Total</td><td class="r">${fmt(s.total)}</td></tr></table>`;
-  const canVoid = store.can('voidSale') && !s.voided;
+  s = store.data.sales.find((x) => x.id === s.id) ? { ...store.data.sales.find((x) => x.id === s.id), balanceAfter: s.balanceAfter } : s;
+  const refund = s.type === 'refund';
+  const canVoid = store.can('voidSale') && !s.voided && !refund && !num(s.refunded);
+  const left = refund ? [] : s.lines.filter((l) => num(l.qty) - num(s.refundedQty?.[l.itemId]) > 0);
+  const canRefund = store.can('voidSale') && !s.voided && !refund && left.length;
   modal({
-    title: fresh ? 'Sale complete' : `Receipt ${s.no}`,
+    title: fresh ? 'Sale complete' : `${refund ? 'Refund' : 'Receipt'} ${s.no}`,
     body: `
       ${s.voided ? `<p class="banner bad">This sale was cancelled${s.voidReason ? ': ' + esc(s.voidReason) : ''}. Stock was returned.</p>` : ''}
-      <p class="muted">${esc(s.no)} · ${fmtDateTime(s.ts)} · ${esc(s.pay)}${s.customer ? ' · ' + esc(s.customer) : ''}${s.byName ? ' · by ' + esc(s.byName) : ''}</p>
-      ${table}
+      ${refund ? `<p class="banner warn">Refund for receipt ${esc(s.refundOfNo)}${s.note ? ' — ' + esc(s.note) : ''}. Stock was returned.</p>` : ''}
+      <p class="muted">${esc(s.no)} · ${fmtDateTime(s.ts)} · ${esc(s.pay)}${s.credit ? ' (on account)' : ''}${s.customer ? ' · ' + esc(s.customer) : ''}${s.byName ? ' · by ' + esc(s.byName) : ''}</p>
+      ${receiptTable(s)}
+      ${s.balanceAfter !== undefined ? `<p><b>${esc(s.customer)}</b> now owes <b>${fmt(s.balanceAfter)}</b>.</p>` : ''}
       ${store.can('reports') ? `<p class="muted small">Cost of goods: ${fmt(s.cogs)} · Gross profit: ${fmt(s.total - s.cogs)}</p>` : ''}`,
     actions: `
       ${canVoid ? `<button type="button" class="btn ghost danger" data-void>Cancel sale</button>` : ''}
-      <button type="button" class="btn ghost" data-share>${icon('wa')}WhatsApp</button>
-      <button type="button" class="btn ghost" data-print>${icon('print')}Print</button>
+      ${canRefund ? `<button type="button" class="btn ghost" data-refund>Refund</button>` : ''}
+      <button type="button" class="btn ghost" data-share>${icon('wa')}<span class="hide-sm">WhatsApp</span></button>
+      <button type="button" class="btn ghost" data-print>${icon('print')}<span class="hide-sm">Print / PDF</span></button>
       <button class="btn primary">${fresh ? 'Next sale' : 'Done'}</button>`,
     onMount: (dlg, close) => {
-      dlg.querySelector('[data-print]').addEventListener('click', () => printHtml(`Receipt ${s.no}`, `
-        <div style="max-width:320px;margin:auto"><h1>${esc(st.shopName)}</h1>
-        <div class="muted">${esc(st.address)}<br>${esc(st.phone)}${st.tin ? '<br>TIN ' + esc(st.tin) : ''}</div>
-        <p>Receipt ${esc(s.no)}<br>${fmtDateTime(s.ts)} · ${esc(s.pay)}</p>${table}<p style="text-align:center">Thank you!</p></div>`));
+      dlg.querySelector('[data-print]').addEventListener('click', () => printReceipt(s));
       dlg.querySelector('[data-share]').addEventListener('click', () => {
-        window.open(`https://wa.me/?text=${encodeURIComponent(receiptText(s))}`, '_blank', 'noopener');
+        const c = s.customerId && store.customer(s.customerId);
+        const phone = c?.phone ? String(c.phone).replace(/\D/g, '').replace(/^0/, '255') : '';
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(receiptText(s))}`, '_blank', 'noopener');
       });
       dlg.querySelector('[data-void]')?.addEventListener('click', async () => {
         close();
         if (await confirmBox(`Cancel sale ${s.no} for ${fmt(s.total)}? The items go back into stock.`, { ok: 'Cancel sale', danger: true })) {
-          store.voidSale(s, 'Cancelled');
-          toast('Sale cancelled and stock returned');
+          try { store.voidSale(s, 'Cancelled'); toast('Sale cancelled and stock returned'); } catch (e) { toast(e.message, { kind: 'err' }); }
         }
       });
+      dlg.querySelector('[data-refund]')?.addEventListener('click', () => { close(); setTimeout(() => openRefund(s), 120); });
+    },
+  });
+}
+
+/** Return some or all items of a sale: money back (or off the customer's account) and stock back. */
+export function openRefund(s) {
+  const left = (l) => num(l.qty) - num(s.refundedQty?.[l.itemId]);
+  modal({
+    title: `Refund ${s.no}`,
+    body: `
+      <p class="muted small">Enter how many of each item came back. Stock goes back up${s.credit ? ` and ${esc(s.customer)}'s balance goes down` : ''}.</p>
+      <table class="table recv-table"><thead><tr><th>Item</th><th class="r">Sold</th><th class="r">Returned</th></tr></thead>
+      <tbody>${s.lines.filter((l) => left(l) > 0).map((l) => `<tr data-item="${l.itemId}"><td>${esc(l.name)}<small>${fmt(l.price)} each</small></td><td class="r num">${fmtQty(left(l))}</td>
+        <td class="r"><input class="rf-qty" type="number" inputmode="decimal" min="0" max="${left(l)}" step="any" value="${left(l)}" aria-label="Returned ${esc(l.name)}"></td></tr>`).join('')}</tbody></table>
+      <p class="total-row"><span>Money back</span><strong id="rf-total"></strong></p>
+      ${field('Reason', '<input name="reason" placeholder="e.g. damaged, wrong item" autocomplete="off">')}`,
+    actions: `<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Refund</button>`,
+    onMount: (dlg) => {
+      const qtys = () => Object.fromEntries([...dlg.querySelectorAll('tbody tr')].map((tr) => [tr.dataset.item, num(tr.querySelector('.rf-qty').value)]));
+      const upd = () => { dlg.querySelector('#rf-total').textContent = fmt(-refundTotals(s, qtys()).total); };
+      dlg.addEventListener('input', upd); upd();
+      dlg._qtys = qtys;
+    },
+    onSubmit: (v, { form }) => {
+      const r = store.refundSale(s, form.closest('dialog')._qtys(), v.reason || '');
+      toast(`Refunded ${fmt(-r.total)} — stock returned`);
+      setTimeout(() => showReceipt(r), 150);
     },
   });
 }

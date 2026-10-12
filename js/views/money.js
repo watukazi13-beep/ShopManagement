@@ -1,7 +1,8 @@
 import { store } from '../store.js';
-import { profitAndLoss, monthKey, monthLabel, addMonths, monthRange, num, dayKey } from '../calc.js';
+import { profitAndLoss, monthKey, monthLabel, addMonths, monthRange, num, dayKey, salesBreakdown } from '../calc.js';
 import { esc, fmt, fmtQty, fmtDate, fmtTime, pct, icon, modal, toast, field, emptyState, confirmBox, downloadFile, toCsv, printHtml, toInputDate, fromInputDate } from '../ui.js';
 import { showReceipt } from './sell.js';
+import { drawCustomers } from './customers.js';
 
 const minus = (v) => (Math.round(v) > 0 ? '−' : '') + fmt(v);
 const lossText = (v) => (v < 0 ? '+' + fmt(-v) : minus(v));
@@ -21,6 +22,9 @@ export default {
     let month = params.get('month') || monthKey();
     let trend = null;
     let seq = 0;
+    let by = 'item';
+    let search = '';
+    const custState = {};
     el.innerHTML = `
       <div class="page-head"><h1>Money</h1>
         <div class="month-pick">
@@ -30,15 +34,19 @@ export default {
         </div>
       </div>
       <div class="seg tabs" role="tablist">
-        <button data-tab="report">Profit report</button>
+        <button data-tab="report">Profit</button>
+        <button data-tab="breakdown">Sales by…</button>
+        <button data-tab="sales">Receipts</button>
         <button data-tab="expenses">Expenses</button>
-        <button data-tab="sales">Sales</button>
+        <button data-tab="customers">Customers</button>
       </div>
       <div id="money-body"></div>`;
     const body = el.querySelector('#money-body');
 
     const draw = async () => {
       el.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+      el.querySelector('.month-pick').hidden = tab === 'customers';
+      if (tab === 'customers') { if (store.ready) { if (!body.contains(document.activeElement)) drawCustomers(body, custState); } return; }
       el.querySelector('#m-label').textContent = monthLabel(month);
       el.querySelector('[data-m="1"]').disabled = month >= monthKey();
       if (!store.ready) { body.innerHTML = '<div class="loading">Loading…</div>'; return; }
@@ -55,7 +63,45 @@ export default {
       if (tab === 'report') drawReport(d);
       if (tab === 'expenses') drawExpenses(d);
       if (tab === 'sales') drawSales(d);
+      if (tab === 'breakdown') drawBreakdown(d);
     };
+
+    /** Loyverse-style sales summary and breakdown by item, category, staff, payment type or day. */
+    function drawBreakdown(d) {
+      const range = monthRange(month);
+      const pl = profitAndLoss(d, month);
+      const catOf = (id) => store.item(id)?.category || '';
+      const rows = salesBreakdown(d.sales || [], range, by, catOf);
+      const labels = { item: 'Item', category: 'Category', staff: 'Staff', pay: 'Payment type', day: 'Day' };
+      const qtyCol = by === 'item' || by === 'category';
+      body.innerHTML = `
+        <div class="stats compact">
+          <div><span>Gross sales</span><strong>${fmt(pl.grossSales)}</strong></div>
+          <div><span>Refunds</span><strong>${fmt(pl.refunds)}</strong></div>
+          <div><span>Discounts</span><strong>${fmt(pl.discounts)}</strong></div>
+          <div><span>Net sales</span><strong>${fmt(pl.revenue)}</strong></div>
+          <div><span>Gross profit</span><strong>${fmt(pl.grossProfit)}</strong></div>
+          ${pl.tax ? `<div><span>${esc(store.settings.taxName || 'VAT')} included</span><strong>${fmt(pl.tax)}</strong></div>` : ''}
+        </div>
+        <div class="row-btns spread">
+          <div class="chips">${Object.entries(labels).map(([k, t]) => `<button type="button" class="chip ${by === k ? 'on' : ''}" data-by="${k}">${t}</button>`).join('')}</div>
+          <button class="btn ghost small" data-act="csv-bd">${icon('download')}CSV</button>
+        </div>
+        ${rows.length ? `<table class="table">
+          <thead><tr><th>${labels[by]}</th>${qtyCol ? '<th class="r">Sold</th>' : '<th class="r">Receipts</th>'}<th class="r hide-sm">Gross</th><th class="r hide-sm">Refunds</th><th class="r hide-sm">Discounts</th><th class="r">Net sales</th><th class="r hide-sm">Cost</th><th class="r">Profit</th><th class="r hide-sm">Margin</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr>
+            <td>${esc(by === 'day' ? fmtDate(monthRange(r.key.slice(0, 7))[0] + (Number(r.key.slice(8)) - 1) * 86400000) : r.label)}</td>
+            <td class="r num">${qtyCol ? fmtQty(r.qty) : r.count}</td>
+            <td class="r num hide-sm">${fmt(r.gross)}</td><td class="r num hide-sm">${r.refunds ? '−' + fmt(r.refunds) : '—'}</td><td class="r num hide-sm">${r.discounts ? '−' + fmt(r.discounts) : '—'}</td>
+            <td class="r num">${fmt(r.net)}</td><td class="r num hide-sm">${fmt(r.cogs)}</td>
+            <td class="r num ${r.profit < 0 ? 'neg' : ''}">${fmt(r.profit)}</td><td class="r num hide-sm">${r.net ? ((r.profit / r.net) * 100).toFixed(1) + '%' : '—'}</td></tr>`).join('')}
+          </tbody></table>` : emptyState('No sales this month', '')}`;
+      body.querySelectorAll('[data-by]').forEach((b) => { b.onclick = () => { by = b.dataset.by; draw(); }; });
+      body.querySelector('[data-act=csv-bd]').onclick = () => downloadFile(`sales-by-${by}-${month}.csv`, toCsv([
+        [labels[by], qtyCol ? 'Quantity sold' : 'Receipts', 'Gross sales', 'Refunds', 'Discounts', 'Net sales', 'Cost of goods', 'Gross profit'],
+        ...rows.map((r) => [r.label, qtyCol ? r.qty : r.count, r.gross, r.refunds, r.discounts, r.net, r.cogs, r.profit]),
+      ]), 'text/csv');
+    }
 
     function drawReport(d) {
       const pl = profitAndLoss(d, month);
@@ -143,17 +189,23 @@ export default {
 
     function drawSales(d) {
       const [a, b] = monthRange(month);
-      const list = (d.sales || []).filter((s) => s.ts >= a && s.ts < b).sort((x, y) => y.ts - x.ts);
+      const sq = search.toLowerCase();
+      const list = (d.sales || []).filter((s) => s.ts >= a && s.ts < b && (!sq || s.no.toLowerCase().includes(sq) || (s.customer || '').toLowerCase().includes(sq) || s.lines.some((l) => l.name.toLowerCase().includes(sq)))).sort((x, y) => y.ts - x.ts);
       const days = new Map();
       for (const s of list) { const k = dayKey(s.ts); if (!days.has(k)) days.set(k, []); days.get(k).push(s); }
       body.innerHTML = `
-        <div class="row-btns spread"><p class="muted">${list.filter((s) => !s.voided).length} sales</p><button class="btn ghost" data-act="csv-sales">${icon('download')}Export CSV</button></div>
+        <div class="row-btns spread">
+          <div class="searchbar grow">${icon('search')}<input type="search" id="rc-q" placeholder="Search receipt no., item or customer" value="${esc(search)}" autocomplete="off"></div>
+          <button class="btn ghost" data-act="csv-sales">${icon('download')}Export CSV</button></div>
+        <p class="muted small">${list.filter((s) => !s.voided && s.type !== 'refund').length} sales${list.some((s) => s.type === 'refund') ? ` · ${list.filter((s) => s.type === 'refund').length} refunds` : ''}</p>
         ${list.length ? [...days].map(([k, ss]) => `
           <h3 class="day-head"><span>${fmtDate(ss[0].ts)}</span><span class="num">${fmt(ss.filter((s) => !s.voided).reduce((t, s) => t + s.total, 0))}</span></h3>
           <ul class="rows card">${ss.map((s) => `
-            <li class="row tap ${s.voided ? 'voided' : ''}" data-sale="${s.id}"><div class="grow"><b>${esc(s.lines.map((l) => l.name).slice(0, 3).join(', '))}${s.lines.length > 3 ? ` +${s.lines.length - 3}` : ''}</b><small>${fmtTime(s.ts)} · ${esc(s.pay)}${s.byName ? ' · ' + esc(s.byName) : ''}${s.voided ? ' · cancelled' : ''}</small></div><span class="num">${fmt(s.total)}</span></li>`).join('')}</ul>`).join('')
+            <li class="row tap ${s.voided ? 'voided' : ''}" data-sale="${s.id}"><div class="grow"><b>${s.type === 'refund' ? 'Refund · ' : ''}${esc(s.lines.map((l) => l.name).slice(0, 3).join(', '))}${s.lines.length > 3 ? ` +${s.lines.length - 3}` : ''}</b><small>${esc(s.no)} · ${fmtTime(s.ts)} · ${esc(s.pay)}${s.credit ? ' (account)' : ''}${s.customer ? ' · ' + esc(s.customer) : ''}${s.byName ? ' · ' + esc(s.byName) : ''}${s.voided ? ' · cancelled' : ''}</small></div><span class="num ${s.type === 'refund' ? 'neg' : ''}">${fmt(s.total)}</span></li>`).join('')}</ul>`).join('')
           : emptyState('No sales this month', '')}`;
       body.querySelectorAll('[data-sale]').forEach((r) => { r.onclick = () => showReceipt(list.find((s) => s.id === r.dataset.sale)); });
+      const rq = body.querySelector('#rc-q');
+      rq.addEventListener('input', () => { search = rq.value.trim(); draw().then(() => { const n = body.querySelector('#rc-q'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }); });
       body.querySelector('[data-act=csv-sales]').onclick = () => {
         const rows = [['Date', 'Time', 'Receipt', 'Item', 'Qty', 'Price', 'Line total', 'Cost', 'Payment', 'Customer', 'Seller', 'Cancelled']];
         for (const s of list) for (const l of s.lines) rows.push([dayKey(s.ts), fmtTime(s.ts), s.no, l.name, l.qty, l.price, l.qty * l.price, Math.round(l.qty * l.cost), s.pay, s.customer, s.byName || s.by, s.voided ? 'yes' : '']);
