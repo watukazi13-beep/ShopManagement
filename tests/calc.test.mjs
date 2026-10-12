@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { weekKey, monthClosing, shiftExpected, onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
+import { packsText, weekKey, monthClosing, shiftExpected, onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
 
 // Average cost: 10 @ 1000 + 10 @ 1200 = 1100
 assert.equal(averageCost(10, 1000, 10, 1200), 1100);
@@ -183,5 +183,10 @@ const cl2 = monthClosing({ ...plM, expenses: { Rent: 100000, Salaries: 150000 } 
 assert.equal(cl2.salaries, 150000);
 assert.equal(cl2.runningCosts, 100000);
 assert.equal(cl2.salariesRecorded, true);
+
+// Packs: bought by the box of 50, sold in pieces
+assert.equal(packsText(100, { packSize: 50, buyUnit: 'box' }), '2 box of 50');
+assert.equal(packsText(103, { packSize: 50, buyUnit: 'box', unit: 'pcs' }), '2 box of 50 + 3 pcs');
+assert.equal(packsText(10, { packSize: 1 }), '');
 
 console.log('All calculation tests passed');

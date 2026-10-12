@@ -142,6 +142,7 @@ export const store = {
       minStock: num(input.minStock),
       maxStock: num(input.maxStock),
       packSize: num(input.packSize) || 1,
+      buyUnit: String(input.buyUnit || '').trim(),
       supplierId: input.supplierId || '',
       service: !!input.service,
       variablePrice: !!input.variablePrice,

@@ -1,5 +1,5 @@
 import { store } from '../store.js';
-import { num, DAY, docNo } from '../calc.js';
+import { num, DAY, docNo, packsText } from '../calc.js';
 import { esc, fmt, fmtQty, fmtDate, icon, modal, toast, field, emptyState, confirmBox, printHtml, toInputDate, fromInputDate } from '../ui.js';
 
 const STATUS = { draft: ['Draft', ''], sent: ['Sent', 'warn'], quoted: ['Quote received', 'good'], ordered: ['PO created', 'good'], closed: ['Goods received', 'good'] };
@@ -147,6 +147,7 @@ function lineRow(l, withCost) {
     ${withCost ? `<label class="li-f"><span>Unit price</span><input class="li-cost" type="number" inputmode="decimal" step="any" min="0" placeholder="Unit price" value="${l.cost ?? ''}" aria-label="Price per unit"></label>` : ''}
     <button type="button" class="icon-btn" data-del-line aria-label="Remove line">${icon('x')}</button>
     ${!withCost && l.itemId && store.item(l.itemId) && !(num(store.item(l.itemId).maxStock) > 0) ? '<small class="li-note">Max not set — quantity is an estimate. Set it in Stock → Min / max.</small>' : ''}
+    <small class="li-pack">${l.itemId && store.item(l.itemId) ? esc(packsText(l.qty, store.item(l.itemId))) : ''}</small>
   </div>`;
 }
 function readLines(dlg) {
@@ -177,7 +178,12 @@ function wireLines(dlg, withCost, onChange) {
     if (it && withCost && !row.querySelector('.li-cost').value) row.querySelector('.li-cost').value = Math.round(num(it.lastCost || it.cost));
     onChange?.();
   });
-  box.addEventListener('input', () => onChange?.());
+  box.addEventListener('input', (e) => {
+    const row = e.target.closest('.line-row');
+    const it = row && store.activeItems().find((i) => i.name.toLowerCase() === row.querySelector('.li-name').value.trim().toLowerCase());
+    if (row) row.querySelector('.li-pack').textContent = it ? packsText(row.querySelector('.li-qty').value, it) : '';
+    onChange?.();
+  });
 }
 function supplierSelect(selected) {
   const sups = [...store.data.suppliers].sort((a, b) => a.name.localeCompare(b.name));
@@ -274,7 +280,7 @@ export function rfqText(r) {
     '',
     r.note || '',
     '',
-    ...r.lines.map((l, i) => `${i + 1}. ${l.name} — ${fmtQty(l.qty)} ${l.unit}`),
+    ...r.lines.map((l, i) => `${i + 1}. ${l.name} — ${fmtQty(l.qty)} ${l.unit}${packsText(l.qty, store.item(l.itemId)) ? ` (${packsText(l.qty, store.item(l.itemId))})` : ''}`),
     '',
     'Please reply with your unit prices and delivery time. Thank you.',
   ].join('\n');
@@ -291,7 +297,7 @@ function printRfq(r) {
     <div class="box"><b>To:</b> ${esc(sup?.name || r.supplierName || '')}<br>${esc([sup?.contact, sup?.phone, sup?.email, sup?.address].filter(Boolean).join(' · '))}</div>
     <p>${esc(r.note || '')}</p>
     <table><thead><tr><th>#</th><th>Item</th><th>Unit</th><th class="r">Quantity</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead>
-    <tbody>${r.lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(l.unit)}</td><td class="r">${fmtQty(l.qty)}</td><td></td><td></td></tr>`).join('')}
+    <tbody>${r.lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(l.unit)}</td><td class="r">${fmtQty(l.qty)}${packsText(l.qty, store.item(l.itemId)) ? `<br><small class="muted">${esc(packsText(l.qty, store.item(l.itemId)))}</small>` : ''}</td><td></td><td></td></tr>`).join('')}
     <tr class="tot"><td colspan="5">Total</td><td></td></tr></tbody></table>
     <p>Please state delivery time, payment terms and how long your prices are valid.</p>
     <div class="sig"><div>Requested by</div><div>Supplier signature &amp; stamp</div></div>`);
@@ -368,7 +374,7 @@ export function poText(po) {
     '',
     po.note || '',
     '',
-    ...po.lines.map((l, i) => `${i + 1}. ${l.name} — ${fmtQty(l.qty)} ${l.unit}${l.cost ? ` @ ${fmt(l.cost)} = ${fmt(l.qty * l.cost)}` : ''}`),
+    ...po.lines.map((l, i) => `${i + 1}. ${l.name} — ${fmtQty(l.qty)} ${l.unit}${packsText(l.qty, store.item(l.itemId)) ? ` (${packsText(l.qty, store.item(l.itemId))})` : ''}${l.cost ? ` @ ${fmt(l.cost)} = ${fmt(l.qty * l.cost)}` : ''}`),
     '',
     `TOTAL: ${fmt(po.total)}`,
   ].join('\n');
@@ -385,7 +391,7 @@ export function printPo(po) {
     <div class="box"><b>Supplier:</b> ${esc(sup?.name || po.supplierName || '')}<br>${esc([sup?.contact, sup?.phone, sup?.email, sup?.address].filter(Boolean).join(' · '))}</div>
     <p>${esc(po.note || '')}</p>
     <table><thead><tr><th>#</th><th>Item</th><th>Unit</th><th class="r">Quantity</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead>
-    <tbody>${po.lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(l.unit)}</td><td class="r">${fmtQty(l.qty)}</td><td class="r">${fmt(l.cost)}</td><td class="r">${fmt(l.qty * l.cost)}</td></tr>`).join('')}
+    <tbody>${po.lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(l.unit)}</td><td class="r">${fmtQty(l.qty)}${packsText(l.qty, store.item(l.itemId)) ? `<br><small class="muted">${esc(packsText(l.qty, store.item(l.itemId)))}</small>` : ''}</td><td class="r">${fmt(l.cost)}${num(store.item(l.itemId)?.packSize) > 1 ? `<br><small class="muted">${fmt(l.cost * num(store.item(l.itemId).packSize))} per ${esc(store.item(l.itemId).buyUnit || 'pack')}</small>` : ''}</td><td class="r">${fmt(l.qty * l.cost)}</td></tr>`).join('')}
     <tr class="tot"><td colspan="5">Total</td><td class="r">${fmt(po.total)}</td></tr></tbody></table>
     <div class="sig"><div>Authorised by</div><div>Supplier signature &amp; stamp</div></div>`);
 }
@@ -513,7 +519,7 @@ export function openReceivePo(id) {
         <thead><tr><th>Item</th><th class="r">To come</th><th class="r">Arrived</th><th class="r">Unit price</th></tr></thead>
         <tbody>${po.lines.map((l) => `
           <tr data-item="${l.itemId}" ${left(l) ? '' : 'class="muted"'}>
-            <td>${esc(l.name)}<small>${num(l.received) ? `${fmtQty(l.received)} of ${fmtQty(l.qty)} already received` : `${fmtQty(l.qty)} ${esc(l.unit)} ordered`}</small></td>
+            <td>${esc(l.name)}<small>${num(l.received) ? `${fmtQty(l.received)} of ${fmtQty(l.qty)} already received` : `${fmtQty(l.qty)} ${esc(l.unit)} ordered`}${packsText(l.qty, store.item(l.itemId)) ? ` · ${esc(packsText(l.qty, store.item(l.itemId)))}` : ''}</small></td>
             <td class="r num">${fmtQty(left(l))}</td>
             <td class="r"><input class="rv-qty" type="number" inputmode="decimal" min="0" step="any" value="${left(l) || ''}" ${left(l) ? '' : 'disabled'} aria-label="Arrived of ${esc(l.name)}"></td>
             <td class="r"><input class="rv-cost" type="number" inputmode="decimal" min="0" step="any" value="${l.cost}" ${left(l) ? '' : 'disabled'} aria-label="Unit price of ${esc(l.name)}"></td>

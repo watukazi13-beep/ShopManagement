@@ -542,6 +542,26 @@ with sync_playwright() as p:
     go('#/money?tab=quotes')
     check('Invoiced' in pg.locator('main').inner_text(), 'Quotations tab shows it as invoiced')
 
+    # --- Bought in boxes, sold in pieces
+    go('#/stock'); pg.locator('#stock-list tr', has_text='Bar soap').click(); pg.wait_for_timeout(250)
+    dlg().locator('[data-edit]').click(); pg.wait_for_timeout(250)
+    dlg().locator('[name=buyUnit]').fill('box'); dlg().locator('[name=packSize]').fill('24'); submit('Save changes'); pg.wait_for_timeout(300)
+    check(item(pg, 'Bar soap')['buyUnit'] == 'box' and item(pg, 'Bar soap')['packSize'] == 24, 'item bought in boxes of 24')
+    go('#/orders?tab=pos'); pg.click('[data-act=new-po]'); pg.wait_for_timeout(250)
+    r0 = dlg().locator('.line-row').first
+    r0.locator('.li-name').fill('Bar soap'); r0.locator('.li-name').dispatch_event('change'); r0.locator('.li-qty').fill('48'); r0.locator('.li-qty').dispatch_event('input')
+    check(r0.locator('.li-pack').inner_text() == '2 box of 24', 'order line shows 48 pcs = 2 box of 24')
+    dlg().locator('[data-print]').click(); pg.wait_for_timeout(250)
+    check('2 box of 24' in pg.locator('#print-root .doc').inner_text(), 'purchase order PDF shows the boxes')
+    pg.locator('[data-doc-close]').click(); pg.wait_for_timeout(150)
+    if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+
+    # --- Dashboard: money position on Home
+    go('#/home')
+    owed = sum(max(0, c.get('balance', 0)) for c in data(pg)['customers'].values())
+    mp = pg.locator('.card', has_text='Money position').inner_text()
+    check(f'{owed:,}' in mp and 'You owe suppliers' in mp and 'Stock value' in mp, f'Home shows the money position (customers owe {owed:,})')
+
     # --- Screens on this size
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
         go(h); pg.wait_for_timeout(300)

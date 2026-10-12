@@ -145,10 +145,13 @@ export function openItemForm(item = null) {
       </div>
       ${item ? '' : field('Opening stock', '<input name="stock" type="number" inputmode="decimal" step="any" value="0">', 'How many you have right now')}
       <fieldset class="group"><legend>Restocking</legend>
-        <div class="grid3">
+        <div class="grid2">
           ${field('Minimum stock', `<input name="minStock" type="number" inputmode="decimal" min="0" step="any" value="${it.minStock ?? ''}" placeholder="auto">`, 'Alert and order at or below this')}
           ${field('Maximum stock', `<input name="maxStock" type="number" inputmode="decimal" min="0" step="any" value="${it.maxStock || ''}" placeholder="not set">`, 'Orders fill up to this')}
-          ${field('Pack size', `<input name="packSize" type="number" inputmode="decimal" min="1" step="any" value="${it.packSize || 1}">`, 'Order in multiples')}
+        </div>
+        <div class="grid2">
+          ${field('Bought in', `<input name="buyUnit" list="buyunit-list" value="${esc(it.buyUnit || '')}" placeholder="e.g. box, ream, carton"><datalist id="buyunit-list">${['box', 'ream', 'carton', 'packet', 'dozen', 'bundle', 'bag'].map((u) => `<option value="${u}">`).join('')}</datalist>`, 'Leave empty if bought one by one')}
+          ${field('Pieces in each', `<input name="packSize" type="number" inputmode="decimal" min="1" step="any" value="${it.packSize || 1}">`, 'Orders are rounded up to whole packs')}
         </div>
         ${field('Usual supplier', `<select name="supplierId"><option value="">— None —</option>${sups.map((s) => `<option value="${s.id}" ${s.id === it.supplierId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`)}
       </fieldset>

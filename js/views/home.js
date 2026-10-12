@@ -1,5 +1,5 @@
 import { store } from '../store.js';
-import { daySummary, profitAndLoss, monthKey, monthLabel } from '../calc.js';
+import { daySummary, profitAndLoss, monthKey, monthLabel, stockValue, num } from '../calc.js';
 import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
 import { showReceipt } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
@@ -61,7 +61,23 @@ export default {
             <div><span>Expenses &amp; losses</span><strong>${fmt(pl.expenseTotal + pl.losses)}</strong></div>
             <div class="stat-main ${pl.netProfit < 0 ? 'neg' : ''}"><span>Net profit</span><strong>${fmt(pl.netProfit)}</strong></div>
           </div>
-        </section>` : ''}
+        </section>
+        ${(() => {
+          const sv = stockValue(store.activeItems());
+          const owedIn = store.owedByCustomers();
+          const owedOut = store.data.purchases.filter((p) => !p.paid).reduce((t, p) => t + num(p.total), 0);
+          const openPo = store.openPos();
+          const onOrderValue = openPo.reduce((t, po) => t + po.lines.reduce((x, l) => x + Math.max(0, num(l.qty) - num(l.received)) * num(l.cost), 0), 0);
+          return `<section class="card">
+            <div class="card-head"><h2>Money position</h2></div>
+            <div class="stats compact">
+              <a href="#/stock"><span>Stock value (cost)</span><strong>${fmt(sv.cost)}</strong></a>
+              <a href="#/money?tab=customers" class="${owedIn ? 'warn' : ''}"><span>Customers owe you</span><strong>${fmt(owedIn)}</strong></a>
+              <a href="#/orders?tab=received" class="${owedOut ? 'warn' : ''}"><span>You owe suppliers</span><strong>${fmt(owedOut)}</strong></a>
+              <a href="#/stock?filter=incoming"><span>On order (${openPo.length})</span><strong>${fmt(onOrderValue)}</strong></a>
+            </div>
+          </section>`;
+        })()}` : ''}
 
         <section class="card">
           <div class="card-head">

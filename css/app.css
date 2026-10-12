@@ -264,7 +264,7 @@ ul.rows.card { padding: 0 16px; }
 .day-head { display: flex; justify-content: space-between; font-size: .9rem; color: var(--muted); margin: 18px 4px 8px; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--line); border-radius: var(--radius-sm); overflow: hidden; }
-.stats > div { background: var(--surface); padding: 12px; display: grid; gap: 2px; }
+.stats > div, .stats > a { background: var(--surface); padding: 12px; display: grid; gap: 2px; }
 .stats span { font-size: .8rem; color: var(--muted); }
 .stats strong { font-size: 1.15rem; font-weight: 700; }
 .stats .stat-main { grid-column: 1 / -1; }
@@ -546,3 +546,9 @@ code { font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-
 .statement-dl .strong { font-weight: 700; }
 .statement-dl .total { font-weight: 800; font-size: 1.1rem; border-top: 2px solid var(--ink); border-bottom: 0; }
 .statement-dl .sub { color: var(--muted); }
+
+.li-pack { grid-column: 1 / -1; color: var(--muted); font-size: .76rem; margin-top: -4px; }
+.li-pack:empty { display: none; }
+
+.stats a { color: inherit; text-decoration: none; display: block; }
+.stats a:hover strong { text-decoration: underline; }

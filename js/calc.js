@@ -387,3 +387,14 @@ export function monthClosing(pl, { salaryList = [], salaryCategory = 'Salaries',
     stockReplacement: money(pl.cogs),
   };
 }
+
+/** "100 pcs" bought in boxes of 50 → "2 box of 50"; not a whole number of packs → "2 box of 50 + 3". */
+export function packsText(qty, item = {}) {
+  const per = num(item.packSize);
+  const q = num(qty);
+  if (!(per > 1) || !q) return '';
+  const name = item.buyUnit || 'pack';
+  const whole = Math.floor(q / per + 1e-9);
+  const rest = Math.round((q - whole * per) * 1000) / 1000;
+  return `${whole ? `${whole} ${name} of ${per}` : ''}${whole && rest ? ' + ' : ''}${rest ? `${rest} ${item.unit || 'pcs'}` : ''}`;
+}
