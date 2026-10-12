@@ -110,7 +110,10 @@ export function profitAndLoss({ sales = [], expenses = [], adjustments = [], pur
   const netProfit = grossProfit - expenseTotal - losses;
   return {
     key,
-    salesCount: ms.length,
+    salesCount: ms.filter((x) => x.type !== 'refund').length,
+    grossSales: money(ms.filter((x) => x.type !== 'refund').reduce((t, x) => t + num(x.subtotal), 0)),
+    refunds: money(-ms.filter((x) => x.type === 'refund').reduce((t, x) => t + num(x.total), 0)),
+    tax: money(ms.reduce((t, x) => t + num(x.tax), 0)),
     revenue: money(revenue),
     discounts: money(discounts),
     cogs: money(cogs),
@@ -220,8 +223,9 @@ export function stockValue(items) {
 export function daySummary(sales, key = dayKey()) {
   const ds = sales.filter((s) => !s.voided && dayKey(s.ts) === key);
   const revenue = ds.reduce((t, s) => t + num(s.total), 0);
+  const count = ds.filter((s) => s.type !== 'refund').length;
   const cogs = ds.reduce((t, s) => t + num(s.cogs), 0);
-  return { count: ds.length, revenue: money(revenue), profit: money(revenue - cogs) };
+  return { count, revenue: money(revenue), profit: money(revenue - cogs) };
 }
 
 /** Short, collision-resistant document number usable offline, e.g. S-261012-K7Q2 */
@@ -230,4 +234,78 @@ export function docNo(prefix, ts = Date.now()) {
   const ymd = `${String(d.getFullYear()).slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
   const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `${prefix}-${ymd}-${rnd}`;
+}
+
+/** Discount typed as an amount ("500") or a percentage ("10%") → shillings. */
+export function parseDiscount(input, subtotal) {
+  const t = String(input ?? '').trim();
+  if (!t) return 0;
+  const sub = Math.max(0, num(subtotal));
+  const amount = t.endsWith('%') ? sub * Math.min(100, Math.max(0, num(t.slice(0, -1)))) / 100 : num(t);
+  return money(Math.min(Math.max(0, amount), sub));
+}
+
+/** Tax already included in a price, e.g. VAT 18%: 11,800 → 1,800. */
+export function taxIncluded(total, rate) {
+  const r = num(rate);
+  return r > 0 ? money(num(total) * r / (100 + r)) : 0;
+}
+
+/**
+ * Lines and totals for refunding part of a sale. `qtys` maps itemId → quantity to return.
+ * The sale's discount is shared across lines so a refund gives back what was actually paid.
+ */
+export function refundTotals(sale, qtys) {
+  const factor = num(sale.subtotal) > 0 ? num(sale.total) / num(sale.subtotal) : 1;
+  const lines = [];
+  for (const l of sale.lines || []) {
+    const left = num(l.qty) - num(sale.refundedQty?.[l.itemId]);
+    const q = Math.min(Math.max(0, num(qtys[l.itemId])), left);
+    if (q > 0) lines.push({ ...l, qty: -q });
+  }
+  const subtotal = lines.reduce((t, l) => t + l.qty * num(l.price), 0);
+  const total = money(subtotal * factor);
+  return {
+    lines,
+    subtotal: money(subtotal),
+    discount: money(subtotal) - total,
+    total,
+    cogs: money(lines.reduce((t, l) => t + l.qty * num(l.cost), 0)),
+  };
+}
+
+/**
+ * Sales grouped like Loyverse reports. by: 'item' | 'category' | 'staff' | 'pay' | 'day'.
+ * Each row: gross sales, refunds, discounts, net sales, cost of goods, gross profit.
+ */
+export function salesBreakdown(sales, [from, to], by, itemCategory = () => '') {
+  const rows = {};
+  const row = (k, label) => (rows[k] ||= { key: k, label, count: 0, qty: 0, gross: 0, refunds: 0, discounts: 0, net: 0, cogs: 0 });
+  for (const s of sales) {
+    if (s.voided || s.ts < from || s.ts >= to) continue;
+    const refund = s.type === 'refund';
+    const factor = num(s.subtotal) ? num(s.total) / num(s.subtotal) : 1;
+    if (by === 'item' || by === 'category') {
+      for (const l of s.lines || []) {
+        const k = by === 'item' ? l.itemId : (itemCategory(l.itemId) || 'No category');
+        const r = row(k, by === 'item' ? l.name : k);
+        const amount = num(l.qty) * num(l.price);
+        r.qty += num(l.qty);
+        if (refund) r.refunds -= amount * factor; else { r.gross += amount; r.discounts += amount * (1 - factor); }
+        r.net += amount * factor;
+        r.cogs += num(l.qty) * num(l.cost);
+      }
+    } else {
+      const k = by === 'staff' ? (s.byName || s.by || 'Unknown') : by === 'pay' ? (s.pay || 'Cash') : dayKey(s.ts);
+      const r = row(k, k);
+      if (!refund) r.count += 1;
+      if (refund) r.refunds -= num(s.total); else { r.gross += num(s.subtotal); r.discounts += num(s.discount); }
+      r.net += num(s.total);
+      r.cogs += num(s.cogs);
+    }
+  }
+  return Object.values(rows).map((r) => ({
+    ...r, gross: money(r.gross), refunds: money(r.refunds), discounts: money(r.discounts),
+    net: money(r.net), cogs: money(r.cogs), profit: money(r.net - r.cogs),
+  })).sort((a, b) => (by === 'day' ? b.key.localeCompare(a.key) : b.net - a.net));
 }

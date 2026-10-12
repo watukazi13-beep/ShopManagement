@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
+import { parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
 
 // Average cost: 10 @ 1000 + 10 @ 1200 = 1100
 assert.equal(averageCost(10, 1000, 10, 1200), 1100);
@@ -63,4 +63,56 @@ assert.equal(rfqs.find((r) => r.supplierId === '').supplierName, 'Any supplier')
 
 assert.deepEqual(stockValue(items), { cost: 20000 + 40000, retail: 25000 + 50000, units: 60 });
 assert.equal(monthKey(monthRange('2026-12')[1]), '2027-01');
+// Discounts: amount or percentage, never more than the subtotal
+assert.equal(parseDiscount('10%', 15000), 1500);
+assert.equal(parseDiscount('500', 15000), 500);
+assert.equal(parseDiscount('20000', 15000), 15000);
+assert.equal(parseDiscount('', 15000), 0);
+assert.equal(parseDiscount('-5', 15000), 0);
+
+// VAT included in price
+assert.equal(taxIncluded(11800, 18), 1800);
+assert.equal(taxIncluded(11800, 0), 0);
+
+// Refund 1 of 2 sugar from a sale with a 500 discount on 6000
+const sale = { subtotal: 6000, total: 5500, discount: 500, lines: [{ itemId: 'a', name: 'Sugar', qty: 2, price: 1500, cost: 1000 }, { itemId: 'b', name: 'Oil', qty: 1, price: 3000, cost: 2000 }] };
+const rf = refundTotals(sale, { a: 1 });
+assert.equal(rf.lines.length, 1);
+assert.equal(rf.lines[0].qty, -1);
+assert.equal(rf.subtotal, -1500);
+assert.equal(rf.total, -1375); // 1500 × 5500/6000
+assert.equal(rf.cogs, -1000);
+// Can't refund more than was sold or already refunded
+const rf2 = refundTotals({ ...sale, refundedQty: { a: 2 } }, { a: 1, b: 5 });
+assert.equal(rf2.lines.length, 1);
+assert.equal(rf2.lines[0].itemId, 'b');
+assert.equal(rf2.lines[0].qty, -1);
+
+// P&L counts refunds separately and nets them out of sales
+const refundDoc = { ts: oct + 3 * DAY, type: 'refund', pay: 'Cash', ...rf };
+const pl2 = profitAndLoss({ sales: [...sales, refundDoc], expenses: [], adjustments: [] }, '2026-10');
+assert.equal(pl2.salesCount, 2);
+assert.equal(pl2.refunds, 1375);
+assert.equal(pl2.grossSales, 9000);
+assert.equal(pl2.revenue, 8500 - 1375);
+assert.equal(pl2.cogs, 6000 - 1000);
+
+// Breakdown by item, category, payment, staff, day
+const range = monthRange('2026-10');
+const cat = (id) => ({ a: 'Groceries', b: 'Groceries' }[id]);
+const byItem = salesBreakdown([...sales, refundDoc], range, 'item', cat);
+const sugar = byItem.find((r) => r.key === 'a');
+assert.equal(sugar.qty, 1);
+assert.equal(sugar.gross, 3000);
+assert.equal(sugar.refunds, 1375);
+assert.equal(sugar.net, 2750 - 1375);
+const byCat = salesBreakdown([...sales, refundDoc], range, 'category', cat);
+assert.equal(byCat.length, 1);
+assert.equal(byCat[0].net, 8500 - 1375);
+assert.equal(byCat[0].profit, (8500 - 1375) - (6000 - 1000));
+const byPay = salesBreakdown([...sales, refundDoc], range, 'pay');
+assert.equal(byPay.find((r) => r.key === 'Cash').net, 5500 - 1375);
+assert.equal(byPay.find((r) => r.key === 'Cash').count, 1);
+assert.equal(salesBreakdown(sales, range, 'day').length, 2);
+
 console.log('All calculation tests passed');
