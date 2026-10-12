@@ -2,4 +2,4 @@
 export const APP_NAME = 'Shop Manager';
 export const MAKER = 'Greenlight Stationeries';
 export const AUTHOR = 'Michael Kepha';
-export const VERSION = '1.8';
+export const VERSION = '1.9';

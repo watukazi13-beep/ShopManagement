@@ -517,6 +517,31 @@ with sync_playwright() as p:
     check('is closed' in pg.locator('.closing-card').inner_text(), 'Profit tab shows the month is closed')
     check(data(pg)['meta']['settings']['salaryList'][0]['name'] == 'Juma', 'salary list remembered for next month')
 
+    # --- Quotation for a customer → invoice on account
+    go('#/sell')
+    if pg.locator('[data-clear]').count(): pg.locator('[data-clear]').first.dispatch_event('click'); pg.wait_for_timeout(100)
+    rt = pg.locator('.tile:has(.tile-name:text-is("Rice"))'); rt.click(); rt.click(); rt.click()
+    if W < 900: pg.click('#cart-bar'); pg.wait_for_timeout(150)
+    pg.locator('[data-quote]').first.click(); pg.wait_for_timeout(250)
+    mama = next(c for c in data(pg)['customers'].values() if c['name'] == 'Mama Asha')
+    mama_id = next(k for k, c in data(pg)['customers'].items() if c['name'] == 'Mama Asha')
+    dlg().locator('[name=customerId]').select_option(mama_id); submit('Save quotation'); pg.wait_for_timeout(400)
+    q = next(iter(data(pg).get('quotes', {}).values()), {})
+    rice_p = item(pg, 'Rice')['price']; rice_s = item(pg, 'Rice')['stock']
+    check(q.get('total') == 3 * rice_p and q.get('customer') == 'Mama Asha', f"quotation saved for Mama Asha: {q.get('total')}")
+    check(pg.locator('.cart-line').count() == 0, 'the till is cleared after quoting')
+    dlg().locator('[data-print]').click(); pg.wait_for_timeout(250)
+    check('Quotation' in pg.locator('#print-root .doc').inner_text() and 'Accepted by' in pg.locator('#print-root .doc').inner_text(), 'quotation PDF ready')
+    pg.locator('[data-doc-close]').click(); pg.wait_for_timeout(150)
+    dlg().locator('[data-invoice]').click(); pg.wait_for_timeout(250)
+    dlg().get_by_role('button', name='Invoice on account').click(); pg.wait_for_timeout(500)
+    mama2 = next(c for c in data(pg)['customers'].values() if c['name'] == 'Mama Asha')
+    check(mama2['balance'] == mama['balance'] + 3 * rice_p and item(pg, 'Rice')['stock'] == rice_s - 3, 'invoicing puts it on her account and takes the stock out')
+    check('Bill to' in pg.locator('#print-root .doc').inner_text(), 'invoice PDF opens')
+    pg.locator('[data-doc-close]').click(); pg.wait_for_timeout(150)
+    go('#/money?tab=quotes')
+    check('Invoiced' in pg.locator('main').inner_text(), 'Quotations tab shows it as invoiced')
+
     # --- Screens on this size
     for h in ['#/home', '#/sell', '#/stock', '#/orders', '#/money', '#/settings']:
         go(h); pg.wait_for_timeout(300)

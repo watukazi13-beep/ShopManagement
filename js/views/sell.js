@@ -80,7 +80,7 @@ export default {
       const t = cartTotals(lines.map((l) => ({ qty: l.qty, price: l.price, cost: 0 })));
       const count = lines.reduce((s, l) => s + num(l.qty), 0);
       cartEl.innerHTML = `
-        <div class="cart-head"><h2>Current sale</h2>${lines.length ? `<span class="row-btns"><button type="button" class="link" data-hold>Hold</button><button type="button" class="link" data-clear>Clear</button></span>` : ''}</div>
+        <div class="cart-head"><h2>Current sale</h2>${lines.length ? `<span class="row-btns">${store.can('orders') ? '<button type="button" class="link" data-quote>Quote</button>' : ''}<button type="button" class="link" data-hold>Hold</button><button type="button" class="link" data-clear>Clear</button></span>` : ''}</div>
         ${lines.length ? `<ul class="cart-lines">${lines.map((l) => {
           const short = !l.item.service && num(l.qty) > num(l.item.stock);
           return `<li class="cart-line">
@@ -149,6 +149,7 @@ export default {
       if (d.price) return store.can('editPrice') || store.item(d.price)?.variablePrice ? editLine(d.price, 'price') : toast('Only the owner or a manager can change prices', { kind: 'err' });
       if (d.clear !== undefined) { cart = []; saveCart(); draw(); return; }
       if (d.hold !== undefined) return holdSale();
+      if (d.quote !== undefined) return import('./quotes.js').then((m) => m.quoteFromCart(cart.filter((l) => store.item(l.itemId)), { onSaved: () => { cart = []; saveCart(); el.querySelector('.pos').classList.remove('show-cart'); draw(); } }));
       if (d.held !== undefined) return openHeld();
       if (d.shift !== undefined) return openShiftPanel();
       if (d.charge !== undefined) return checkout();
@@ -381,9 +382,11 @@ export function showReceipt(s, { fresh = false } = {}) {
       ${canRefund ? `<button type="button" class="btn ghost" data-refund>Refund</button>` : ''}
       <button type="button" class="btn ghost" data-share>${icon('wa')}<span class="hide-sm">WhatsApp</span></button>
       <button type="button" class="btn ghost" data-print>${icon('print')}<span class="hide-sm">Print / PDF</span></button>
+      ${s.credit && !refund ? '<button type="button" class="btn ghost" data-invoice>Invoice</button>' : ''}
       <button class="btn primary">${fresh ? 'Next sale' : 'Done'}</button>`,
     onMount: (dlg, close) => {
       dlg.querySelector('[data-print]').addEventListener('click', () => printReceipt(s));
+      dlg.querySelector('[data-invoice]')?.addEventListener('click', () => import('./quotes.js').then((m) => m.printInvoice(s)));
       dlg.querySelector('[data-share]').addEventListener('click', () => {
         const c = s.customerId && store.customer(s.customerId);
         const phone = c?.phone ? String(c.phone).replace(/\D/g, '').replace(/^0/, '255') : '';

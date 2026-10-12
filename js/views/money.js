@@ -3,6 +3,7 @@ import { profitAndLoss, monthKey, monthLabel, addMonths, monthRange, num, dayKey
 import { esc, fmt, fmtQty, fmtDate, fmtTime, pct, icon, modal, toast, field, emptyState, confirmBox, downloadFile, toCsv, printHtml, toInputDate, fromInputDate } from '../ui.js';
 import { showReceipt } from './sell.js';
 import { drawCustomers } from './customers.js';
+import { drawQuotes } from './quotes.js';
 
 const minus = (v) => (Math.round(v) > 0 ? '−' : '') + fmt(v);
 const lossText = (v) => (v < 0 ? '+' + fmt(-v) : minus(v));
@@ -39,14 +40,16 @@ export default {
         <button data-tab="sales">Receipts</button>
         <button data-tab="expenses">Expenses</button>
         <button data-tab="customers">Customers</button>
+        <button data-tab="quotes">Quotations</button>
       </div>
       <div id="money-body"></div>`;
     const body = el.querySelector('#money-body');
 
     const draw = async () => {
       el.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-      el.querySelector('.month-pick').hidden = tab === 'customers';
+      el.querySelector('.month-pick').hidden = tab === 'customers' || tab === 'quotes';
       if (tab === 'customers') { if (store.ready) { if (!body.contains(document.activeElement)) drawCustomers(body, custState); } return; }
+      if (tab === 'quotes') { if (store.ready) drawQuotes(body); return; }
       el.querySelector('#m-label').textContent = monthLabel(month);
       el.querySelector('[data-m="1"]').disabled = month >= monthKey();
       if (!store.ready) { body.innerHTML = '<div class="loading">Loading…</div>'; return; }

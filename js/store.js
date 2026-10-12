@@ -31,11 +31,15 @@ export const DEFAULT_SETTINGS = {
   salaryList: [],
   maintenancePct: 10,
   lastClosed: '',
+  invoiceDays: 14,
+  quoteDays: 14,
+  paymentDetails: '',
+  quoteNote: 'Prices are valid for 14 days. Thank you for your enquiry.',
   poNote: 'Please supply the items below. Quote this order number on your delivery note and invoice.',
 };
 
 const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments', 'shifts'];
-const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers', 'closings'];
+const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers', 'closings', 'quotes'];
 
 export const store = {
   backend: null,
@@ -51,7 +55,7 @@ export const store = {
   pending: false,
   online: navigator.onLine,
   since: 0,
-  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], closings: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [] },
+  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], closings: [], quotes: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [] },
   settings: { ...DEFAULT_SETTINGS },
   _loaded: new Set(),
   _subs: new Set(),
@@ -311,6 +315,38 @@ export const store = {
       { type: 'incr', col: 'customers', id: c.id, field: 'balance', by: -amt },
     ]);
     return id;
+  },
+  // ---------- Quotations for customers ----------
+  /** Save a quotation (price offer — no stock moves). lines: [{ itemId, qty, price }] */
+  saveQuote(q) {
+    const ts = q.ts || Date.now();
+    const cust = this.customer(q.customerId);
+    if (!cust) throw new Error('Choose the customer');
+    const lines = (q.lines || []).filter((l) => num(l.qty) > 0).map((l) => {
+      const it = this.item(l.itemId) || {};
+      return { itemId: l.itemId, name: it.name || l.name, unit: it.unit || 'pcs', qty: num(l.qty), price: money(l.price) };
+    });
+    if (!lines.length) throw new Error('Add at least one item');
+    const sub = lines.reduce((t, l) => t + l.qty * l.price, 0);
+    const discount = parseDiscount(q.discount, sub);
+    const total = money(sub - discount);
+    const id = q.id || this.backend.newId('quotes');
+    const data = {
+      no: q.no || docNo('Q', ts), ts, date: dayKey(ts), customerId: cust.id, customer: cust.name, lines,
+      subtotal: money(sub), discount, total, tax: taxIncluded(total, this.settings.taxRate), taxRate: num(this.settings.taxRate),
+      validUntil: ts + num(q.validDays || this.settings.quoteDays || 14) * DAY, note: q.note ?? this.settings.quoteNote ?? '',
+      status: q.status || 'open', saleId: q.saleId || '', by: q.by || this.user?.email || '', ...this._stamp(),
+    };
+    this.backend.write([{ type: 'set', col: 'quotes', id, data }]);
+    return id;
+  },
+  deleteQuote(id) { this.backend.write([{ type: 'delete', col: 'quotes', id }]); },
+  /** The customer accepted: goods go out on their account (stock down, they owe the total). */
+  invoiceQuote(q) {
+    const credit = (this.settings.payMethods || []).find((m) => this.isCreditPay(m)) || 'Credit';
+    const sale = this.recordSale({ lines: q.lines, discount: q.discount, pay: credit, customerId: q.customerId, note: `From quotation ${q.no}` });
+    this.backend.write([{ type: 'merge', col: 'quotes', id: q.id, data: { status: 'invoiced', saleId: sale.id, ...this._stamp() } }]);
+    return sale;
   },
   owedByCustomers() { return money(this.data.customers.reduce((t, c) => t + Math.max(0, num(c.balance)), 0)); },
 
