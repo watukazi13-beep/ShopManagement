@@ -8,14 +8,20 @@ Only people you give access to can open it. Hosting and sync are free.
 
 **What it does**
 
-- **Sell** — tap items or scan a barcode, take payment (Cash, M-Pesa, Tigo Pesa, Airtel Money, Card, Credit), work out change, print or WhatsApp the receipt.
-- **Stock** — every sale and delivery updates stock automatically. Average cost is recalculated each time you receive stock at a new price.
-- **Low stock alerts** — a red badge, an alert list on Home, and a phone notification when an item runs low.
-- **How much to reorder** — based on how fast each item sold in the last 30 days, your supplier's delivery time, and how many days of stock you want. You can also set your own low level and "fill up to" level per item.
-- **Requests for quotation (RFQ)** — drafted for each supplier with the quantities needed. Created automatically on the first day you open the app each month, or any time you tap "Create". Send by WhatsApp, email, or print/save as PDF. When goods arrive, one tap turns the request into a stock delivery.
-- **Monthly profit** — Sales − Cost of goods sold = Gross profit; minus expenses and stock losses = Net profit. Profit per item, payment method totals, and a 6‑month comparison. Print or export to CSV.
-- **People** — Owner, Manager (everything except managing people) and Seller (sell and view stock only — no costs or profit).
-- **Import from Loyverse** — export your item list from Loyverse and import the CSV in one step.
+- **Sell** — tap items or scan a barcode; discounts as an amount or a percentage; Cash, M-Pesa, Tigo Pesa, Airtel Money, Card, Credit (your own list); change worked out; receipt as PDF or WhatsApp. Hold a sale and come back to it. Optional VAT included in prices.
+- **Customers and credit** — sell on account; see who owes what, record payments, send WhatsApp reminders and print statements.
+- **Refunds** — return part or all of a receipt: stock goes back, money back or off the customer's account.
+- **Quotations and invoices** — turn the till into a quotation for a school or office; when accepted, invoice it on account (PDF with how to pay).
+- **Stock** — every sale and delivery updates stock automatically; average cost recalculates on every delivery. Minimum and maximum stock per item; count many items at once; items bought in boxes or reams and sold in pieces.
+- **Low stock alerts** — badge, Home list and phone notification. Items already on order are not ordered twice.
+- **Requests for quotation and purchase orders** — drafted per supplier, filling each item up to its maximum. Automatic RFQs every month and automatic purchase orders every week (you choose the day). PDF, WhatsApp or email. Ordered items show as *On order*; deliveries are received in **Stock → Incoming**, in full or in part.
+- **Money** — profit and loss for any month; sales by item, category, staff, payment type and day (like Loyverse); searchable receipts; expenses; 6-month comparison; CSV export.
+- **Month-end closing** — salaries, maintenance savings and other savings come off to show the profit you can really take; money to keep for restocking; what customers owe and what you owe suppliers. Saved per month with a PDF.
+- **Shifts** (optional) — open with the cash float, cash in/out, close with a count to see if the drawer is short.
+- **Several shops** — management creates shops and chooses each owner; each shop has its own items, stock, sales and settings. Owners add their managers and sellers. Management sees all shops side by side.
+- **People** — Management, Owner, Manager (everything except people) and Seller (sell and view stock only — no costs or profit).
+- **Shop setup** — a step-by-step guide in the app: shop details and logo, payments and VAT, receipt and document wording, categories, restocking, people, items.
+- **Import from Loyverse** — items with SKU, prices, cost, stock, low-stock and optimal levels, variable prices and services.
 
 ---
 
@@ -51,12 +57,13 @@ Choose one:
 
 The Firebase config is not a password — it only says *which* project to talk to. Your data is protected by Google sign-in and the security rules.
 
-### 4. Claim your shop
+### 4. Become management and set up your shop
 
-1. Open the app and **Sign in with Google** using *your* account.
-2. You'll be asked **"Make this account the owner?"** → **Yes, I am the owner**. Do this straight away, before sharing the link.
-3. Go to **Settings** → fill in your shop name, phone and address (they appear on receipts and RFQs).
-4. **Settings → People with access** → enter a staff member's Gmail address, pick **Seller** or **Manager**, tap **Give access**. They open the same link and sign in with that Google account.
+1. Open the app and **Sign in with Google** with *your* account.
+2. The first person to sign in is offered **"Set me up as management"** — do this straight away, before sharing the link. (If you used the earlier one-shop version, you are offered **Upgrade now** instead: your shop becomes shop 1 with everything in it.)
+3. Create your first shop (you can be its owner), then tap **Start setup** on Home and follow the steps.
+4. To add another shop: **All shops → Create shop**, choose its owner's Gmail address, and optionally copy the item list from an existing shop.
+5. Owners add their managers and sellers in **Settings → People with access** (or in the setup guide). Staff open the same link and sign in with that Google account.
 
 ### 5. Install it like an app
 
