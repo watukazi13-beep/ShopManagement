@@ -4,6 +4,9 @@ import { createLocalBackend } from './backend-local.js';
 import { esc, icon, toast, modal } from './ui.js';
 import { MAKER, AUTHOR, CREDIT, bookLoader } from './brand.js';
 import { installApp, isInstalled } from './install.js';
+import { applyTheme, shownTheme, toggleTheme } from './theme.js';
+
+applyTheme();
 import home from './views/home.js';
 import sell from './views/sell.js';
 import stock from './views/stock.js';
@@ -165,6 +168,7 @@ function showShell() {
     <header class="topbar">
       <a href="#/home" class="brand" id="brand"><img class="brand-icon" src="brand/book-icon.svg" alt="" width="32" height="32"><span class="brand-text"><span id="shop-name"></span><small class="brand-sub">Shop Manager</small></span><span id="shop-caret"></span></a>
       <span class="sync" id="sync" role="status"></span>
+      <button type="button" class="icon-btn theme-btn" id="theme-btn"></button>
       <a href="#/settings" class="icon-btn" aria-label="Settings">${icon('settings')}</a>
     </header>
     <nav class="nav" aria-label="Main">
@@ -174,6 +178,16 @@ function showShell() {
       <div class="nav-credit"><span>Developed by</span><img src="brand/developers-logo-on-dark.svg" alt="${esc(MAKER)}"><span>Author: ${esc(AUTHOR)}</span></div>
     </nav>
     <main id="view" class="view" tabindex="-1"></main>`;
+  const themeBtn = document.getElementById('theme-btn');
+  const paintThemeBtn = () => {
+    const dark = shownTheme() === 'dark';
+    themeBtn.innerHTML = icon(dark ? 'sun' : 'moon');
+    themeBtn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+    themeBtn.title = dark ? 'Light theme' : 'Dark theme';
+  };
+  themeBtn.addEventListener('click', toggleTheme);
+  document.addEventListener('themechange', paintThemeBtn);
+  paintThemeBtn();
   document.getElementById('brand').addEventListener('click', (e) => {
     if (store.mode === 'firebase' && (store.shops.length > 1 || store.isAdmin)) { e.preventDefault(); openShopSwitcher(switchShop); }
   });

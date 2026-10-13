@@ -5,6 +5,7 @@ import { APP_NAME, MAKER, AUTHOR, VERSION } from '../brand.js';
 
 import { installApp, isInstalled } from '../install.js';
 import { openSetup } from './setup.js';
+import { getTheme, setTheme } from '../theme.js';
 
 export default {
   title: 'Settings',
@@ -33,6 +34,16 @@ export default {
             ${store.isAdmin ? `<a class="btn ghost" href="#/manage">${icon('shops')}All shops</a>` : ''}
           </div>
           ${notif === 'denied' ? '<p class="muted small">Alerts are blocked for this site in your browser settings.</p>' : ''}
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h2>Appearance</h2></div>
+          <div class="theme-pick" role="radiogroup" aria-label="Theme">
+            ${[['light', 'sun', 'Light'], ['dark', 'moon', 'Dark'], ['auto', 'monitor', 'Automatic']].map(([v, ic, t]) => `
+              <button type="button" class="theme-opt ${getTheme() === v ? 'on' : ''}" role="radio" aria-checked="${getTheme() === v}" data-theme-pick="${v}">
+                <span class="theme-swatch ${v}">${icon(ic)}</span><span>${t}</span></button>`).join('')}
+          </div>
+          <p class="muted small">Saved on this device. Automatic follows your phone or computer setting. You can also switch with the ${icon('moon')} button at the top.</p>
         </section>
 
         ${owner && store.mode !== 'local' ? `
@@ -146,6 +157,8 @@ export default {
       if (a === 'connect') openConnect();
       if (a === 'install') installApp();
       if (a === 'setup') openSetup();
+      const th = e.target.closest('[data-theme-pick]')?.dataset.themePick;
+      if (th) { setTheme(th); draw(); }
       const rm = e.target.closest('[data-remove]')?.dataset.remove;
       if (rm && await confirmBox(`Remove access for ${rm}?`, { ok: 'Remove', danger: true })) { try { store.setShopMember(rm, null); toast('Access removed'); } catch (err) { toast(err.message, { kind: 'err' }); } }
     });
@@ -155,7 +168,13 @@ export default {
     el.addEventListener('input', (e) => { if (e.target.closest('#shop-form')) dirty = true; });
     el.addEventListener('submit', (e) => { if (e.target.id === 'shop-form') dirty = false; });
     draw();
-    return { update: () => { if (!dirty) draw(); } };
+    // Keep the Appearance choice in step when the top-bar button is used.
+    const onTheme = () => el.querySelectorAll('[data-theme-pick]').forEach((b) => {
+      const on = b.dataset.themePick === getTheme();
+      b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
+    });
+    document.addEventListener('themechange', onTheme);
+    return { update: () => { if (!dirty) draw(); }, destroy: () => document.removeEventListener('themechange', onTheme) };
   },
 };
 

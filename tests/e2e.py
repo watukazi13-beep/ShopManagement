@@ -83,6 +83,25 @@ with sync_playwright() as p:
     check('Greenlight Developers' in about and 'Michael Kepha' in about and pg.locator('.about-dev img').count() == 1, 'developer shown in Settings → About')
     check(pg.locator('.nav-credit').is_visible() == (W >= 900), 'credit in the side menu on computers only')
 
+    # --- Light / dark theme
+    bg = lambda: pg.evaluate("getComputedStyle(document.body).backgroundColor")
+    check(bg() == 'rgb(239, 241, 236)', 'light theme by default (device is light)')
+    pg.click('[data-theme-pick=dark]'); pg.wait_for_timeout(150)
+    check(pg.evaluate("document.documentElement.dataset.theme") == 'dark' and bg() == 'rgb(11, 18, 14)', 'choosing Dark turns the app dark')
+    pg.screenshot(path=OUT + 'dark-settings.png')
+    pg.reload(); pg.wait_for_timeout(800)
+    check(bg() == 'rgb(11, 18, 14)' and pg.locator('[data-theme-pick=dark].on').count() == 1, 'Dark is remembered after reopening')
+    go('#/home'); pg.wait_for_timeout(200); pg.screenshot(path=OUT + 'dark-home.png', full_page=True)
+    pg.click('#theme-btn'); pg.wait_for_timeout(150)
+    check(bg() == 'rgb(239, 241, 236)', 'the top-bar button switches back to light')
+    go('#/settings'); pg.click('[data-theme-pick=auto]'); pg.wait_for_timeout(150)
+    check(pg.evaluate("document.documentElement.dataset.theme") is None and pg.evaluate("localStorage.getItem('theme')") is None, 'Automatic follows the device again')
+    pg.emulate_media(color_scheme='dark'); pg.wait_for_timeout(150)
+    check(bg() == 'rgb(11, 18, 14)', 'Automatic turns dark when the device is dark')
+    pg.click('[data-theme-pick=light]'); pg.wait_for_timeout(150)
+    check(bg() == 'rgb(239, 241, 236)', 'Light stays light even when the device is dark')
+    pg.click('[data-theme-pick=auto]'); pg.emulate_media(color_scheme='light'); pg.wait_for_timeout(150)
+
     # --- Supplier
     go('#/orders?tab=suppliers')
     pg.click('[data-act=new-sup]')

@@ -7,6 +7,8 @@
   <meta name="description" content="Sales, stock, costs and monthly profit for your shop. Works offline.">
   <meta name="author" content="Michael Kepha, Greenlight Developers">
   <meta name="theme-color" content="#0F4A2E">
+  <script>/* Apply the chosen light/dark theme before the page paints (no flash). */
+    try { var t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="brand/book-icon.svg" type="image/svg+xml">
   <link rel="alternate icon" href="icons/book-192.png" type="image/png">
