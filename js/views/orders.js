@@ -483,6 +483,9 @@ export function openPo(id) {
   const editable = !po || ((po.status === 'draft' || po.status === 'ordered') && po.lines.every((l) => !num(l.received)));
   const [stText, stCls] = po ? PO_STATUS[po.status] || PO_STATUS.draft : PO_STATUS.draft;
   const canReceive = po && (po.status === 'ordered' || po.status === 'partial') && store.can('receive');
+  // Not received yet: owners and managers may delete. Received (even partly): owner, or a manager the owner allowed.
+  const anyReceived = !!po && po.lines.some((l) => num(l.received) > 0);
+  const canDelete = !!po && store.can('orders') && (!anyReceived || store.can('clear'));
   const lines = po?.lines || [{}, {}];
   // A new order gets its id and number now, so saving, printing and sending never create duplicates.
   const meta = { id: po?.id || store.backend.newId('pos'), no: po?.no || docNo('PO'), ts: po?.ts || Date.now() };
@@ -491,6 +494,7 @@ export function openPo(id) {
     wide: true,
     body: `
       ${po ? `<p><span class="pill ${stCls}">${stText}</span>${isLate(po) ? ' <span class="pill bad">Late</span>' : ''}${po.closedShort ? ' <span class="muted small">Closed short — not everything arrived</span>' : ''}</p>` : ''}
+      ${anyReceived && !canDelete && store.can('orders') ? '<p class="muted small">Received orders can only be deleted by the owner, or a manager the owner has allowed.</p>' : ''}
       <div class="grid2">
         ${field('Supplier', editable ? supplierSelect(po?.supplierId) : `<input value="${esc(po.supplierName)}" disabled>`)}
         ${field('Expected delivery', `<input type="date" name="expected" value="${toInputDate(po?.expectedTs || Date.now() + num(store.settings.leadDays || 7) * DAY)}" ${po && !editable && po.status !== 'ordered' && po.status !== 'partial' ? 'disabled' : ''}>`)}
@@ -505,8 +509,7 @@ export function openPo(id) {
       <p class="total-row"><span>Total</span><strong id="po-total">${fmt(po?.total || 0)}</strong></p>
       ${field('Message to supplier', `<textarea name="note" rows="2" ${editable ? '' : 'disabled'}>${esc(po?.note ?? store.settings.poNote ?? '')}</textarea>`)}`,
     actions: `
-      ${po && draft ? `<button type="button" class="btn ghost danger" data-del>${icon('trash')}<span class="hide-sm">Delete</span></button>` : ''}
-      ${po && (po.status === 'ordered') && po.lines.every((l) => !num(l.received)) ? '<button type="button" class="btn ghost danger" data-cancel-po>Cancel order</button>' : ''}
+      ${po && canDelete ? `<button type="button" class="btn ghost danger" data-del>${icon('trash')}<span class="hide-sm">Delete</span></button>` : ''}
       ${po && po.status === 'partial' ? '<button type="button" class="btn ghost" data-close-short>Close short</button>' : ''}
       <button type="button" class="btn ghost" data-wa>${icon('wa')}<span class="hide-sm">WhatsApp</span></button>
       <button type="button" class="btn ghost" data-mail>${icon('mail')}<span class="hide-sm">Email</span></button>
@@ -558,11 +561,7 @@ export function openPo(id) {
       act('[data-recv]', () => { const c = persist(); close(); setTimeout(() => openReceivePo(c.id), 120); });
       act('[data-del]', async () => {
         close();
-        if (await confirmBox(`Delete draft ${po.no}?`, { ok: 'Delete', danger: true })) { store.deletePo(po.id); toast('Purchase order deleted'); }
-      });
-      act('[data-cancel-po]', async () => {
-        close();
-        if (await confirmBox(`Cancel ${po.no}? Its items will no longer show as on order.`, { ok: 'Cancel order', danger: true })) { store.setPoStatus(po, 'cancelled'); toast('Order cancelled'); }
+        await confirmDeletePo(po);
       });
       act('[data-close-short]', async () => {
         close();
@@ -581,6 +580,36 @@ export function openPo(id) {
       toast(po ? 'Purchase order saved' : 'Draft purchase order saved');
     },
   });
+}
+
+/** Ask, then delete an order. A received order shows exactly what comes back out of stock. */
+export async function confirmDeletePo(po) {
+  const received = po.lines.some((l) => num(l.received) > 0);
+  if (!received) {
+    if (await confirmBox(`Delete ${po.no}? ${po.status === 'draft' ? 'The draft' : 'The order'} is removed from Orders, and its items no longer show as on order in Stock.`, { ok: 'Delete order', danger: true })) {
+      try { await store.deletePo(po); toast('Purchase order deleted'); } catch (e) { toast(e.message, { kind: 'err' }); }
+    }
+    return;
+  }
+  let rev;
+  try { rev = await store.poReversal(po); } catch (e) { toast(e.message, { kind: 'err' }); return; }
+  const rows = rev.lines.map((l) => {
+    const o = asOrdered({ ...po.lines.find((x) => x.itemId === l.itemId), qty: l.take });
+    return `<tr><td>${esc(l.name)}</td><td class="r num">−${esc(orderedText(o, l.take))}${l.sold > 0 ? `<small class="warn-text block">${fmtQty(l.sold)} already sold — stock goes to 0</small>` : ''}</td></tr>`;
+  }).join('');
+  const ok = await new Promise((resolve) => modal({
+    title: `Delete received order ${po.no}?`,
+    body: `
+      <p>This order has been received. Deleting it will undo the deliveries:</p>
+      <table class="table"><thead><tr><th>Item</th><th class="r">Out of stock</th></tr></thead><tbody>${rows}</tbody></table>
+      <p>${rev.purchases.length} delivery record${rev.purchases.length === 1 ? '' : 's'} (${fmt(rev.total)}) will be removed from purchases and supplier balances. Cost prices stay as they are.</p>
+      <p class="banner warn">This cannot be undone.</p>`,
+    actions: '<button class="btn ghost" value="cancel">Keep order</button><button class="btn danger">Delete and take out of stock</button>',
+    onSubmit: () => resolve(true),
+    onClose: () => resolve(false),
+  }));
+  if (!ok) return;
+  try { await store.deletePo(po); toast(`${po.no} deleted — stock updated`); } catch (e) { toast(e.message, { kind: 'err' }); }
 }
 
 /** Receive a delivery against a purchase order: stock and cost update on save. */

@@ -881,3 +881,7 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 .recv-table input[type=number], .line-row input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .recv-table input::-webkit-inner-spin-button, .recv-table input::-webkit-outer-spin-button,
 .line-row input::-webkit-inner-spin-button, .line-row input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Owner gives a manager extra permission */
+.member-row { align-items: flex-start; }
+.perm-switch { margin-top: 6px; font-size: .84rem; color: var(--ink); }

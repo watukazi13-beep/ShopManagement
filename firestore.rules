@@ -59,6 +59,11 @@ service cloud.firestore {
       function isBoss() {
         return isMember() && role() in ['owner', 'manager'];
       }
+      // Delete received orders, clear losses, delete expenses: owners, and managers the owner has allowed.
+      function canClear() {
+        return isMember() && (role() == 'owner'
+          || (role() == 'manager' && shop().get('canClear', {}).get(myEmail(), false) == true));
+      }
       function sellersReceive() {
         return isMember() && get(/databases/$(database)/documents/shops/$(shopId)/meta/settings).data.get('staffCanReceive', false) == true;
       }
@@ -95,7 +100,9 @@ service cloud.firestore {
 
       match /pos/{id} {
         allow read: if isMember();
-        allow create, delete: if isBoss();
+        allow create: if isBoss();
+        // Orders with nothing received yet: owners and managers. Partly/fully received: canClear only.
+        allow delete: if (isBoss() && resource.data.status in ['draft', 'ordered', 'cancelled']) || canClear();
         allow update: if isBoss()
           || (sellersReceive() && onlyChanges(['lines', 'status', 'closedShort', 'receivedAt', 'updatedAt', 'updatedBy']));
       }
@@ -103,7 +110,8 @@ service cloud.firestore {
       match /purchases/{id} {
         allow read: if isMember();
         allow create: if isBoss() || sellersReceive();
-        allow update, delete: if isBoss();
+        allow update: if isBoss();
+        allow delete: if canClear();   // undoing a received order
       }
 
       // Customers: sellers add them at the till and their credit sales change the balance.
@@ -125,7 +133,10 @@ service cloud.firestore {
 
       match /{col}/{id} {
         allow read: if isMember() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'quotes', 'invoices', 'closings'];
-        allow write: if isBoss() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'quotes', 'invoices', 'closings'];
+        allow create, update: if isBoss() && col in ['suppliers', 'rfqs', 'adjustments', 'expenses', 'quotes', 'invoices', 'closings'];
+        // Clearing loss and expense figures needs canClear; the rest owners and managers.
+        allow delete: if (col in ['adjustments', 'expenses'] && canClear())
+          || (isBoss() && col in ['suppliers', 'rfqs', 'quotes', 'invoices', 'closings']);
       }
     }
 

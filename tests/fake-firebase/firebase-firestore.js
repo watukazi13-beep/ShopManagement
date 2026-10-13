@@ -98,7 +98,14 @@ function allowed(kind, path, data, old) {
   const { shopId, col, role: r } = scope(path);
   if (!shopId) return false; // the old single-shop layout is read-only now
   if (!r) return false;
-  if (r === 'owner' || r === 'manager') return true;
+  if (r === 'owner') return true;
+  if (r === 'manager') {
+    if (kind !== 'delete') return true;
+    const clear = db[`shops/${shopId}`]?.canClear?.[u.email] === true;
+    if (col === 'pos') return ['draft', 'ordered', 'cancelled'].includes(old?.status) || clear;
+    if (['purchases', 'adjustments', 'expenses'].includes(col)) return clear;
+    return col !== 'sales';
+  }
   const recv = db[`shops/${shopId}/meta/settings`]?.staffCanReceive === true;
   if (col === 'sales' && kind === 'set' && !old) return data.by === u.email;
   if (col === 'customers' && kind !== 'delete') return true;

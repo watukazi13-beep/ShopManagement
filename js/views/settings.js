@@ -52,7 +52,9 @@ export default {
           <p class="muted small">Only these Google accounts can open ${esc(store.shop?.name || 'this shop')}. Managers can do everything except manage people. Sellers can only sell and view stock.${store.isAdmin ? '' : ' Only management can change owners.'}</p>
           <ul class="rows">
             ${owners.map((email) => `<li class="row"><div class="grow"><b>${esc(email)}</b><small>Owner</small></div>${store.isAdmin && owners.length > 1 ? `<button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button>` : ''}</li>`).join('')}
-            ${members.map(([email, role]) => `<li class="row"><div class="grow"><b>${esc(email)}</b><small>${esc(roleName(role))}</small></div><button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button></li>`).join('')}
+            ${members.map(([email, role]) => `<li class="row member-row"><div class="grow"><b>${esc(email)}</b><small>${esc(roleName(role))}</small>
+              ${role === 'manager' ? `<label class="check perm-switch"><input type="checkbox" data-can-clear="${esc(email)}" ${store.shop?.canClear?.[email] ? 'checked' : ''}> Can delete received orders and clear figures (losses, expenses)</label>` : ''}</div>
+              <button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button></li>`).join('')}
           </ul>
           <form class="inline-form" id="add-member">
             <input name="email" type="email" required placeholder="their.email@gmail.com" aria-label="Email">
@@ -166,6 +168,14 @@ export default {
     // Don't redraw (and lose typing) while a form has unsaved edits.
     let dirty = false;
     el.addEventListener('input', (e) => { if (e.target.closest('#shop-form')) dirty = true; });
+    el.addEventListener('change', async (e) => {
+      const email = e.target.dataset?.canClear;
+      if (!email) return;
+      try {
+        await store.setCanClear(email, e.target.checked);
+        toast(e.target.checked ? `${email} can now delete received orders and clear figures` : `${email} can no longer delete received orders or clear figures`);
+      } catch (err) { e.target.checked = !e.target.checked; toast(err.message, { kind: 'err' }); }
+    });
     el.addEventListener('submit', (e) => { if (e.target.id === 'shop-form') dirty = false; });
     draw();
     // Keep the Appearance choice in step when the top-bar button is used.

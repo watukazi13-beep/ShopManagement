@@ -73,7 +73,9 @@ export const store = {
     if (what === 'manage') return this.isAdmin; // all shops: management only
     const r = this.role;
     if (r === 'owner') return true;
-    if (r === 'manager') return what !== 'users';
+    // 'clear' = delete received orders, clear losses, delete expenses: managers only when the owner allows it.
+    if (r === 'manager') return what === 'clear' ? !!this.shop?.canClear?.[this.user?.email] : what !== 'users';
+    if (what === 'clear') return false;
     if (what === 'receive') return !!this.settings.staffCanReceive;
     return ['sell', 'viewStock'].includes(what);
   },
@@ -452,7 +454,47 @@ export const store = {
     const extra = status === 'ordered' && !po.orderedAt ? { orderedAt: Date.now() } : {};
     this.backend.write([{ type: 'merge', col: 'pos', id: po.id, data: { status, ...extra, ...this._stamp() } }]);
   },
-  deletePo(id) { this.backend.write([{ type: 'delete', col: 'pos', id }]); },
+  /** Delivery records saved against a purchase order (looks further back online if the order is old). */
+  async purchasesOfPo(po) {
+    const found = new Map(this.data.purchases.filter((p) => p.poId === po.id).map((p) => [p.id, p]));
+    if (num(po.ts) < this.since) {
+      try {
+        for (const p of await this.backend.fetchRange('purchases', num(po.ts) - DAY, Date.now() + DAY)) if (p.poId === po.id) found.set(p.id, p);
+      } catch { /* offline: use what is on this device */ }
+    }
+    return [...found.values()];
+  },
+  /** What deleting a received order will undo: pieces back out of stock (never below 0) and its deliveries. */
+  async poReversal(po) {
+    const lines = po.lines.filter((l) => num(l.received) > 0).map((l) => {
+      const it = this.item(l.itemId);
+      const take = Math.min(num(l.received), Math.max(0, num(it?.stock)));
+      return { itemId: l.itemId, name: l.name, unit: l.unit || 'pcs', received: num(l.received), take, sold: num(l.received) - take, gone: !it };
+    });
+    const purchases = lines.length ? await this.purchasesOfPo(po) : [];
+    return { lines, purchases, total: money(purchases.reduce((t, p) => t + num(p.total), 0)) };
+  },
+  /**
+   * Delete a purchase order. Not received yet: it simply goes (and stops showing as on order).
+   * Partly or fully received: owner, or a manager allowed by the owner, only — the pieces come
+   * back out of stock and its delivery records are removed. Item cost prices are left as they are.
+   */
+  async deletePo(poOrId) {
+    const po = typeof poOrId === 'string' ? this.data.pos.find((x) => x.id === poOrId) : poOrId;
+    if (!po) return;
+    const ops = [];
+    const received = po.lines.some((l) => num(l.received) > 0);
+    if (received) {
+      if (!this.can('clear')) throw new Error('Received orders can only be deleted by the owner, or a manager the owner has allowed');
+      const rev = await this.poReversal(po);
+      for (const l of rev.lines) if (l.take > 0 && !l.gone) ops.push({ type: 'incr', col: 'items', id: l.itemId, field: 'stock', by: -l.take });
+      for (const p of rev.purchases) ops.push({ type: 'delete', col: 'purchases', id: p.id });
+    } else if (!this.can('orders')) throw new Error('Only owners and managers can delete orders');
+    // A request for quotation that became this order goes back to "sent".
+    if (po.rfqId && this.data.rfqs.some((r) => r.id === po.rfqId)) ops.push({ type: 'merge', col: 'rfqs', id: po.rfqId, data: { status: 'sent', poId: '', ...this._stamp() } });
+    ops.push({ type: 'delete', col: 'pos', id: po.id });
+    return this.backend.write(ops);
+  },
   /**
    * Receive (part of) a purchase order. receipts: [{ itemId, qty, cost }].
    * Stock and average cost update at once; anything not delivered stays on order
@@ -552,7 +594,17 @@ export const store = {
       data: { ts, date: dayKey(ts), category: e.category || 'Other', amount: money(e.amount), note: e.note || '', by: this.user?.email || '', ...this._stamp() },
     }]);
   },
-  deleteExpense(id) { this.backend.write([{ type: 'delete', col: 'expenses', id }]); },
+  deleteExpense(id) {
+    if (!this.can('clear')) throw new Error('Only the owner, or a manager the owner has allowed, can delete expenses');
+    this.backend.write([{ type: 'delete', col: 'expenses', id }]);
+  },
+  /** Clear stock-loss figures (one or many). Only the figure goes; stock stays as it is. */
+  clearAdjustments(ids) {
+    if (!this.can('clear')) throw new Error('Only the owner, or a manager the owner has allowed, can clear losses');
+    const ops = ids.map((id) => ({ type: 'delete', col: 'adjustments', id }));
+    for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
+    return ops.length;
+  },
 
   // ---------- Suppliers ----------
   saveSupplier(s) {
@@ -699,8 +751,19 @@ export const store = {
     if (!admins[this.user.email]) throw new Error('You cannot remove yourself from management');
     return this.backend.write([{ type: 'update', col: '/platform', id: 'admins', data: { admins, updatedAt: Date.now() } }]);
   },
-  _shopPeople(owners, members) {
-    return { owners, members, memberEmails: [...new Set([...owners, ...Object.keys(members)])] };
+  _shopPeople(owners, members, canClear = this.shop?.canClear || {}) {
+    // Only managers keep the "can clear" permission; it goes if they are removed or change role.
+    const keep = Object.fromEntries(Object.entries(canClear).filter(([e, on]) => on && members[e] === 'manager'));
+    return { owners, members, memberEmails: [...new Set([...owners, ...Object.keys(members)])], canClear: keep };
+  },
+  /** Owner: allow (or stop) a manager deleting received orders and clearing losses and expenses. */
+  setCanClear(email, on) {
+    if (!this.can('users')) throw new Error('Only the owner can change this');
+    const key = email.trim().toLowerCase();
+    if (this.shop.members?.[key] !== 'manager') throw new Error('Only managers can be given this permission');
+    const canClear = { ...(this.shop.canClear || {}) };
+    if (on) canClear[key] = true; else delete canClear[key];
+    return this.backend.write([{ type: 'update', col: '/shops', id: this.shop.id, data: { canClear, updatedAt: Date.now() } }]);
   },
   /** Management: create a shop with an owner; optionally copy another shop's item list (stock starts at 0). */
   async createShop({ name, ownerEmail, copyFrom = '' }) {
@@ -710,7 +773,7 @@ export const store = {
     const id = this.backend.newId('/shops');
     await this.backend.write([{
       type: 'set', col: '/shops', id,
-      data: { name: name.trim(), ...this._shopPeople([owner], {}), createdAt: Date.now(), createdBy: this.user.email },
+      data: { name: name.trim(), ...this._shopPeople([owner], {}, {}), createdAt: Date.now(), createdBy: this.user.email },
     }]);
     const ops = [{ type: 'set', col: `/shops/${id}/meta`, id: 'settings', data: { shopName: name.trim(), ...this._stamp() } }];
     if (copyFrom) {

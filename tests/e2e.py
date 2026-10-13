@@ -387,9 +387,13 @@ with sync_playwright() as p:
     rice_po = next(p for p in pos_() if any(l['name'] == 'Rice' for l in p['lines']))
     check(len(pos_()) == n0 + 1 and rice_po['total'] == 20000, 'new PO saved with total TSh 20,000')
     pg.locator('[data-po]', has_text=rice_po['no']).click(); pg.wait_for_timeout(250); dlg().locator('[data-order]').click(); pg.wait_for_timeout(300)
-    pg.locator('[data-po]', has_text=rice_po['no']).click(); pg.wait_for_timeout(250); dlg().locator('[data-cancel-po]').click(); pg.wait_for_timeout(250)
-    dlg().get_by_role('button', name='Cancel order', exact=True).click(); pg.wait_for_timeout(300)
-    check(next(p for p in pos_() if p['no'] == rice_po['no'])['status'] == 'cancelled', 'an ordered PO can be cancelled')
+    go('#/stock'); check('on order' in pg.locator('#stock-list tr', has=pg.locator('b:text-is("Rice")')).inner_text().lower(), 'ordered rice shows as on order in Stock')
+    go('#/orders?tab=pos')
+    pg.locator('[data-po]', has_text=rice_po['no']).click(); pg.wait_for_timeout(250); dlg().locator('[data-del]').click(); pg.wait_for_timeout(250)
+    dlg().get_by_role('button', name='Delete order', exact=True).click(); pg.wait_for_timeout(300)
+    check(not any(p['no'] == rice_po['no'] for p in pos_()), 'an ordered PO that has not arrived can be deleted')
+    go('#/stock'); check('on order' not in pg.locator('#stock-list tr', has=pg.locator('b:text-is("Rice")')).inner_text().lower(), 'deleted order no longer shows as on order in Stock')
+    go('#/orders?tab=pos')
     # quotation request → purchase order
     go('#/orders?tab=rfq')
     open_rfq = next(({**r, 'id': k} for k, r in data(pg)['rfqs'].items() if r['status'] in ('draft', 'sent')), None)
@@ -629,6 +633,28 @@ with sync_playwright() as p:
     check(item(pg, 'Pens blue')['stock'] == 60, 'receiving 5 dozen pens adds 60 pens')
     pg.click('[data-f=all]')
     if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+    # the owner deletes the received order: stock comes back out, delivery record goes
+    n_purch = len([p for p in data(pg)['purchases'].values() if p.get('poNo') == soap_po['no']])
+    go('#/orders?tab=pos'); pg.locator('[data-po]', has_text=soap_po['no']).click(); pg.wait_for_timeout(250)
+    dlg().locator('[data-del]').click(); pg.wait_for_timeout(300)
+    warn = dlg().inner_text()
+    check('2 boxes' in warn and '48 pcs' in warn and '60,000' in warn, 'delete warning lists boxes coming out of stock and the TSh 60,000 purchase')
+    pg.screenshot(path=OUT + 'delete-received.png')
+    dlg().get_by_role('button', name='Delete and take out of stock').click(); pg.wait_for_timeout(400)
+    check(n_purch == 1 and not any(p.get('poNo') == soap_po['no'] for p in data(pg)['purchases'].values()), 'its delivery record is removed')
+    check(not any(p['no'] == soap_po['no'] for p in pos_()) and item(pg, 'Bar soap')['stock'] == soap0 and item(pg, 'Pens blue')['stock'] == 0, f'received order deleted: soap back to {soap0}, pens back to 0')
+    # losses: the owner clears the month
+    adj = [a for a in data(pg).get('adjustments', {}).values()]
+    stock_before = {i['name']: i['stock'] for i in data(pg)['items'].values()}
+    go('#/money?tab=losses')
+    check(pg.locator('[data-adj]').count() == len(adj) and len(adj) > 0, f'Losses tab lists the {len(adj)} stock adjustments this month')
+    pg.screenshot(path=OUT + 'losses.png', full_page=True)
+    pg.click('[data-act=clear-all]'); pg.wait_for_timeout(200)
+    dlg().get_by_role('button', name='Clear all').click(); pg.wait_for_timeout(400)
+    check(len(data(pg).get('adjustments', {})) == 0 and 'No stock losses' in pg.locator('#money-body').inner_text(), 'Clear all removes every loss figure for the month')
+    check({i['name']: i['stock'] for i in data(pg)['items'].values()} == stock_before, 'clearing losses leaves stock as it is')
+    go('#/money?tab=report')
+    check('Stock losses' in pg.locator('#money-body').inner_text(), 'profit report still opens after clearing')
 
     # --- Dashboard: money position on Home
     go('#/home')

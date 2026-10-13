@@ -39,6 +39,7 @@ export default {
         <button data-tab="breakdown">Sales by…</button>
         <button data-tab="sales">Receipts</button>
         <button data-tab="expenses">Expenses</button>
+        <button data-tab="losses">Losses</button>
         <button data-tab="customers">Customers</button>
         <button data-tab="quotes">Quotations</button>
       </div>
@@ -65,6 +66,7 @@ export default {
       if (my !== seq) return;
       if (tab === 'report') drawReport(d);
       if (tab === 'expenses') drawExpenses(d);
+      if (tab === 'losses') drawLosses(d);
       if (tab === 'sales') drawSales(d);
       if (tab === 'breakdown') drawBreakdown(d);
     };
@@ -202,6 +204,41 @@ export default {
       body.querySelectorAll('[data-exp]').forEach((r) => { r.onclick = () => openExpenseForm(list.find((x) => x.id === r.dataset.exp)); });
     }
 
+    /** Stock losses and corrections (damaged, expired, lost, count differences). Clearing removes the figure only. */
+    function drawLosses(d) {
+      const [a, b] = monthRange(month);
+      const list = (d.adjustments || []).filter((x) => x.ts >= a && x.ts < b).sort((x, y) => y.ts - x.ts);
+      const value = (x) => -num(x.qty) * num(x.cost); // positive = money lost
+      const total = list.reduce((t, x) => t + value(x), 0);
+      const canClear = store.can('clear');
+      body.innerHTML = `
+        <div class="row-btns spread">
+          <p>Stock losses: <b class="${total > 0 ? 'neg' : ''}">${lossText(total)}</b> <span class="muted small">at cost · ${list.length} entr${list.length === 1 ? 'y' : 'ies'}</span></p>
+          ${canClear && list.length ? `<button class="btn ghost danger" data-act="clear-all">${icon('trash')}Clear all for ${esc(monthLabel(month))}</button>` : ''}
+        </div>
+        <p class="muted small">${canClear ? 'Clearing removes the figure from your reports and profit. Stock stays as it is.' : 'Only the owner, or a manager the owner has allowed, can clear these figures.'}</p>
+        ${list.length ? `<ul class="rows card">${list.map((x) => `
+          <li class="row" data-adj="${x.id}">
+            <div class="grow"><b>${esc(x.name || store.item(x.itemId)?.name || 'Item')}</b>
+              <small>${esc(x.reason || 'Adjustment')} · ${fmtDate(x.ts)} · ${num(x.qty) > 0 ? '+' : ''}${fmtQty(x.qty)} ${esc(store.item(x.itemId)?.unit || 'pcs')}${x.note ? ' · ' + esc(x.note) : ''}${x.by ? ' · ' + esc(x.by) : ''}</small></div>
+            <span class="num ${value(x) > 0 ? 'neg' : 'up'}">${lossText(value(x))}</span>
+            ${canClear ? `<button type="button" class="icon-btn" data-clear="${x.id}" aria-label="Clear this figure">${icon('trash')}</button>` : ''}
+          </li>`).join('')}</ul>`
+          : emptyState('No stock losses this month', 'Damaged, expired or lost stock and count differences show here.')}`;
+      const done = (n) => { pastCache.delete(month); toast(`${n} figure${n === 1 ? '' : 's'} cleared — stock unchanged`); };
+      body.querySelectorAll('[data-clear]').forEach((btn) => {
+        btn.onclick = async () => {
+          const x = list.find((y) => y.id === btn.dataset.clear);
+          if (!(await confirmBox(`Clear this figure (${x.name}, ${x.reason || 'adjustment'}, ${lossText(value(x))})? Stock stays as it is.`, { ok: 'Clear figure', danger: true }))) return;
+          try { done(store.clearAdjustments([x.id])); } catch (e) { toast(e.message, { kind: 'err' }); }
+        };
+      });
+      body.querySelector('[data-act=clear-all]')?.addEventListener('click', async () => {
+        if (!(await confirmBox(`Clear all ${list.length} stock-loss figures for ${monthLabel(month)} (${lossText(total)})? Stock stays as it is. This cannot be undone.`, { ok: 'Clear all', danger: true }))) return;
+        try { done(store.clearAdjustments(list.map((x) => x.id))); } catch (e) { toast(e.message, { kind: 'err' }); }
+      });
+    }
+
     function drawSales(d) {
       const [a, b] = monthRange(month);
       const sq = search.toLowerCase();
@@ -268,7 +305,7 @@ export function openExpenseForm(x = null) {
       <div class="chips wrap" id="exp-chips">${cats.map((c) => `<button type="button" class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
       ${field('Date', `<input name="date" type="date" required value="${toInputDate(x?.ts || Date.now())}">`)}
       ${field('Note (optional)', `<input name="note" value="${esc(x?.note || '')}">`)}`,
-    actions: `${x ? '<button type="button" class="btn ghost danger" data-del>Delete</button>' : ''}<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Save</button>`,
+    actions: `${x && store.can('clear') ? '<button type="button" class="btn ghost danger" data-del>Delete</button>' : ''}<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Save</button>`,
     onMount: (dlg, close) => {
       dlg.querySelector('#exp-chips').addEventListener('click', (e) => {
         const c = e.target.closest('[data-c]')?.dataset.c;
@@ -276,7 +313,9 @@ export function openExpenseForm(x = null) {
       });
       dlg.querySelector('[data-del]')?.addEventListener('click', async () => {
         close();
-        if (await confirmBox(`Delete this expense of ${fmt(x.amount)}?`, { ok: 'Delete', danger: true })) { store.deleteExpense(x.id); pastCache.delete(monthKey(x.ts)); toast('Expense deleted'); }
+        if (await confirmBox(`Delete this expense of ${fmt(x.amount)}?`, { ok: 'Delete', danger: true })) {
+          try { store.deleteExpense(x.id); pastCache.delete(monthKey(x.ts)); toast('Expense deleted'); } catch (e) { toast(e.message, { kind: 'err' }); }
+        }
       });
     },
     onSubmit: (v) => {

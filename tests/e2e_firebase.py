@@ -18,6 +18,7 @@ BOSS = {'uid': 'u-boss', 'email': 'boss@gmail.com', 'name': 'Michael Boss'}
 SELLER = {'uid': 'u-seller', 'email': 'seller@gmail.com', 'name': 'Juma Seller'}
 OWNER2 = {'uid': 'u-owner2', 'email': 'owner2@gmail.com', 'name': 'Neema Owner'}
 STRANGER = {'uid': 'u-x', 'email': 'stranger@gmail.com', 'name': 'Someone'}
+MANAGER = {'uid': 'u-mgr', 'email': 'manager@gmail.com', 'name': 'Asha Manager'}
 CONFIG_PASTE = '''const firebaseConfig = {
   apiKey: "AIzaFAKE123",
   authDomain: "my-shop-123.firebaseapp.com",
@@ -221,6 +222,73 @@ with sync_playwright() as p:
     pg.locator('[data-remove="seller@gmail.com"]').click(); pg.wait_for_timeout(200)
     dlg().get_by_role('button', name='Remove', exact=True).click(); pg.wait_for_timeout(400)
     check(fs()[f'shops/{main}']['members'] == {} and 'seller@gmail.com' not in fs()[f'shops/{main}']['memberEmails'], 'seller access removed')
+
+    # ---------- Deleting orders and clearing figures: owner, or a manager the owner allows ----------
+    pg.fill('#add-member [name=email]', MANAGER['email']); pg.select_option('#add-member [name=role]', 'manager')
+    pg.click('#add-member button'); pg.wait_for_timeout(500)
+    check(pg.locator(f'[data-can-clear="{MANAGER["email"]}"]').count() == 1 and not pg.locator(f'[data-can-clear="{MANAGER["email"]}"]').is_checked(), 'manager added; "can delete received orders" is off by default')
+    sign_out(); sign_in(MANAGER)
+    if pg.locator('#shop-name').inner_text() != 'Greenlight Main':
+        pg.click('#brand'); pg.wait_for_timeout(250); dlg().locator('[data-pick]', has_text='Main').click(); pg.wait_for_timeout(1500)
+    received_po = docs(main, 'pos')[0]
+    go('#/orders?tab=pos'); pg.locator('[data-po]', has_text=received_po['no']).click(); pg.wait_for_timeout(300)
+    check(dlg().locator('[data-del]').count() == 0 and 'only be deleted by the owner' in dlg().inner_text(), 'manager without permission cannot delete a received order')
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
+    # rules refuse it even if tried directly
+    pid = next(k.split('/')[-1] for k in fs() if k.startswith(f'shops/{main}/purchases/'))
+    refused = pg.evaluate(f"""(async () => {{
+      const F = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js');
+      const b = F.writeBatch({{}}); b.delete(F.doc({{}}, 'shops/{main}/purchases/{pid}'));
+      try {{ await b.commit(); return false; }} catch (e) {{ return true; }}
+    }})()""")
+    check(refused, 'the rules refuse a manager deleting a delivery record without permission')
+    pg.evaluate('window.__fsDenied.length = 0')
+    # a manager can delete an order that has not arrived
+    pg.click('[data-act=new-po]'); pg.wait_for_timeout(300)
+    r0 = dlg().locator('.line-row').first
+    r0.locator('.li-name').fill('Unga 2kg'); r0.locator('.li-name').dispatch_event('change'); r0.locator('.li-qty').fill('3'); r0.locator('.li-cost').fill('3200')
+    dlg().locator('[data-order]').click(); pg.wait_for_timeout(500)
+    open_po = next(p for p in docs(main, 'pos') if p['status'] == 'ordered')
+    go('#/stock'); check('on order' in pg.locator('#stock-list tr', has_text='Unga').inner_text(), 'Stock shows Unga on order')
+    go('#/orders?tab=pos'); pg.locator('[data-po]', has_text=open_po['no']).click(); pg.wait_for_timeout(300)
+    dlg().locator('[data-del]').click(); pg.wait_for_timeout(250)
+    dlg().get_by_role('button', name='Delete order').click(); pg.wait_for_timeout(500)
+    check(not any(p['no'] == open_po['no'] for p in docs(main, 'pos')), 'manager deleted the order that had not arrived')
+    go('#/stock'); check('on order' not in pg.locator('#stock-list tr', has_text='Unga').inner_text(), 'and it no longer shows as on order in Stock')
+    # a loss the manager cannot clear yet
+    pg.locator('#stock-list tr', has_text='Unga').click(); pg.wait_for_timeout(250)
+    dlg().locator('[data-adjust]').click(); pg.wait_for_timeout(250)
+    dlg().locator('label.chip', has_text='Remove').click(); dlg().locator('[name=qty]').fill('1'); dlg().locator('[name=reason]').select_option('Damaged')
+    dlg().get_by_role('button', name='Save').click(); pg.wait_for_timeout(400)
+    go('#/money?tab=losses')
+    check('Damaged' in pg.locator('#money-body').inner_text() and pg.locator('[data-clear]').count() == 0, 'manager sees the loss but cannot clear it without permission')
+    sign_out()
+    # the owner gives permission
+    sign_in(BOSS)
+    if pg.locator('#shop-name').inner_text() != 'Greenlight Main':
+        pg.click('#brand'); pg.wait_for_timeout(250); dlg().locator('[data-pick]', has_text='Main').click(); pg.wait_for_timeout(1500)
+    go('#/settings'); pg.locator(f'[data-can-clear="{MANAGER["email"]}"]').check(); pg.wait_for_timeout(500)
+    check(fs()[f'shops/{main}'].get('canClear', {}).get(MANAGER['email']) is True, 'owner allowed the manager to delete received orders and clear figures')
+    sign_out(); sign_in(MANAGER)
+    if pg.locator('#shop-name').inner_text() != 'Greenlight Main':
+        pg.click('#brand'); pg.wait_for_timeout(250); dlg().locator('[data-pick]', has_text='Main').click(); pg.wait_for_timeout(1500)
+    unga0 = next(i for i in docs(main, 'items') if i['name'] == 'Unga 2kg')['stock']
+    go('#/orders?tab=pos'); pg.locator('[data-po]', has_text=received_po['no']).click(); pg.wait_for_timeout(300)
+    dlg().locator('[data-del]').click(); pg.wait_for_timeout(500)
+    check('Unga 2kg' in dlg().inner_text() and '5 pcs' in dlg().inner_text(), 'warning lists what comes back out of stock (Unga 5 pcs)')
+    dlg().get_by_role('button', name='Delete and take out of stock').click(); pg.wait_for_timeout(600)
+    unga = next(i for i in docs(main, 'items') if i['name'] == 'Unga 2kg')
+    check(not any(p['no'] == received_po['no'] for p in docs(main, 'pos')) and unga['stock'] == unga0 - 5, f"received order deleted and stock taken back out: {unga0} − 5 = {unga['stock']}")
+    check(not any(p.get('poNo') == received_po['no'] for p in docs(main, 'purchases')), 'its delivery record is removed too')
+    adj_before = len(docs(main, 'adjustments'))
+    go('#/money?tab=losses'); pg.locator('[data-clear]').first.click(); pg.wait_for_timeout(250)
+    dlg().get_by_role('button', name='Clear figure').click(); pg.wait_for_timeout(500)
+    check(len(docs(main, 'adjustments')) == adj_before - 1 and next(i for i in docs(main, 'items') if i['name'] == 'Unga 2kg')['stock'] == unga['stock'], 'loss figure cleared; stock unchanged')
+    denied = pg.evaluate('window.__fsDenied')
+    check(denied == [], f'no writes refused for the allowed manager: {denied}')
+    sign_out(); sign_in(BOSS)
+    if pg.locator('#shop-name').inner_text() != 'Greenlight Main':
+        pg.click('#brand'); pg.wait_for_timeout(250); dlg().locator('[data-pick]', has_text='Main').click(); pg.wait_for_timeout(1500)
     sign_out()
     sign_in(SELLER)
     check('No access yet' in h1(), 'removed seller is locked out')
