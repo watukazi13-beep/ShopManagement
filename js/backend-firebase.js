@@ -18,6 +18,7 @@ export async function createFirebaseBackend(config) {
   try {
     db = F.initializeFirestore(app, {
       localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }),
+      ignoreUndefinedProperties: true, // a missing optional field is skipped instead of failing the save
     });
   } catch (e) {
     console.warn('Offline cache unavailable, using memory cache', e);

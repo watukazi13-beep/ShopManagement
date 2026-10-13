@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { packsText, weekKey, monthClosing, shiftExpected, onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
+import { plural, packInfo, inPacks, orderQtyText, packRule, unitPrice, packsText, weekKey, monthClosing, shiftExpected, onOrderQty, parseDiscount, taxIncluded, refundTotals, salesBreakdown, averageCost, cartTotals, profitAndLoss, reorderPlan, draftRfqs, monthRange, monthKey, stockValue, DAY } from '../js/calc.js';
 
 // Average cost: 10 @ 1000 + 10 @ 1200 = 1100
 assert.equal(averageCost(10, 1000, 10, 1200), 1100);
@@ -185,8 +185,26 @@ assert.equal(cl2.runningCosts, 100000);
 assert.equal(cl2.salariesRecorded, true);
 
 // Packs: bought by the box of 50, sold in pieces
-assert.equal(packsText(100, { packSize: 50, buyUnit: 'box' }), '2 box of 50');
-assert.equal(packsText(103, { packSize: 50, buyUnit: 'box', unit: 'pcs' }), '2 box of 50 + 3 pcs');
+assert.equal(packsText(100, { packSize: 50, buyUnit: 'box' }), '2 boxes of 50');
+assert.equal(packsText(103, { packSize: 50, buyUnit: 'box', unit: 'pcs' }), '2 boxes of 50 + 3 pcs');
 assert.equal(packsText(10, { packSize: 1 }), '');
 
 console.log('All calculation tests passed');
+
+// Buying units
+assert.equal(plural('carton', 2), 'cartons');
+assert.equal(plural('box', 3), 'boxes');
+assert.equal(plural('dozen', 5), 'dozen');
+assert.equal(plural('carton', 1), 'carton');
+assert.deepEqual(packInfo({}, { packSize: 12, buyUnit: 'dozen' }), { unit: 'dozen', per: 12 });
+assert.equal(packInfo({ packSize: 1 }, { packSize: 12 }), null, 'line snapshot wins over the item');
+assert.equal(inPacks({ qty: 48 }, { packSize: 24, buyUnit: 'carton' }), true);
+assert.equal(inPacks({ qty: 50 }, { packSize: 24, buyUnit: 'carton' }), false);
+assert.equal(inPacks({ qty: 50, inPacks: true }, { packSize: 24 }), true);
+assert.equal(orderQtyText(48, { unit: 'carton', per: 24 }), '2 cartons (48 pcs)');
+assert.equal(orderQtyText(51, { unit: 'carton', per: 24 }), '2 cartons + 3 pcs (51 pcs)');
+assert.equal(orderQtyText(12, { unit: 'dozen', per: 12 }, 'pens'), '1 dozen (12 pens)');
+assert.equal(orderQtyText(5, null), '5 pcs');
+assert.equal(packRule({ unit: 'dozen', per: 12 }, 'pens'), '1 dozen = 12 pens');
+assert.equal(Math.round(unitPrice(1000 / 24) * 24), 1000, 'carton price divided and multiplied back stays the same');
+console.log('Buying unit tests passed');

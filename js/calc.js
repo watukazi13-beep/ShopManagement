@@ -388,7 +388,54 @@ export function monthClosing(pl, { salaryList = [], salaryCategory = 'Salaries',
   };
 }
 
-/** "100 pcs" bought in boxes of 50 → "2 box of 50"; not a whole number of packs → "2 box of 50 + 3". */
+// ---------- Buying units: carton, dozen, box, set… ----------
+/** Units shops buy in from wholesalers. A dozen is always 12. */
+export const BUY_UNITS = ['dozen', 'carton', 'box', 'set', 'packet', 'pack', 'ream', 'bundle', 'bag', 'crate', 'roll'];
+const PLURALS = { box: 'boxes', dozen: 'dozen', pcs: 'pcs', kg: 'kg', g: 'g', l: 'l', ml: 'ml', m: 'm', each: 'each' };
+/** "carton", 2 → "cartons"; "box" → "boxes"; "dozen" stays "dozen". */
+export function plural(unit, n) {
+  const u = String(unit || '').trim();
+  if (!u || Math.abs(num(n)) === 1) return u;
+  const low = u.toLowerCase();
+  if (PLURALS[low]) return PLURALS[low];
+  if (/(s|x|z|ch|sh)$/.test(low)) return `${u}es`;
+  if (/[^aeiou]y$/.test(low)) return `${u.slice(0, -1)}ies`;
+  return `${u}s`;
+}
+/** Price per piece kept to 4 decimals, so a carton price divided by its pieces adds back up exactly. */
+export const unitPrice = (v) => Math.round(num(v) * 10000) / 10000;
+/**
+ * The buying unit of an order line (snapshot) or item: { unit: 'carton', per: 24 }.
+ * null when the item is bought one by one.
+ */
+export function packInfo(src = {}, item = {}) {
+  const per = num(src.packSize ?? item?.packSize);
+  if (!(per > 1)) return null;
+  return { unit: (src.buyUnit ?? item?.buyUnit) || 'pack', per };
+}
+/** Whether a line is shown in its buying unit (cartons) rather than pieces. */
+export function inPacks(line = {}, item = {}) {
+  const p = packInfo(line, item);
+  if (!p) return false;
+  if (line.inPacks !== undefined) return !!line.inPacks;
+  const q = num(line.qty);
+  return !q || Math.abs(q / p.per - Math.round(q / p.per)) < 1e-9;
+}
+/** 48 pcs in cartons of 24 → "2 cartons (48 pcs)"; 51 → "2 cartons + 3 pcs (51 pcs)"; no pack → "48 pcs". */
+export function orderQtyText(qty, pack, pieceUnit = 'pcs') {
+  const q = num(qty);
+  const pcs = `${fmtN(q)} ${pieceUnit || 'pcs'}`;
+  if (!pack || !q) return pcs;
+  const whole = Math.floor(q / pack.per + 1e-9);
+  const rest = Math.round((q - whole * pack.per) * 1000) / 1000;
+  if (!whole) return pcs;
+  return `${fmtN(whole)} ${plural(pack.unit, whole)}${rest ? ` + ${fmtN(rest)} ${pieceUnit || 'pcs'}` : ''} (${pcs})`;
+}
+/** "1 carton = 24 pcs" */
+export const packRule = (pack, pieceUnit = 'pcs') => (pack ? `1 ${pack.unit} = ${fmtN(pack.per)} ${pieceUnit || 'pcs'}` : '');
+const fmtN = (n) => (Math.round(num(n) * 1000) / 1000).toLocaleString('en-US');
+
+/** "100 pcs" bought in boxes of 50 → "2 boxes of 50"; not a whole number of packs → "2 boxes of 50 + 3 pcs". */
 export function packsText(qty, item = {}) {
   const per = num(item.packSize);
   const q = num(qty);
@@ -396,5 +443,5 @@ export function packsText(qty, item = {}) {
   const name = item.buyUnit || 'pack';
   const whole = Math.floor(q / per + 1e-9);
   const rest = Math.round((q - whole * per) * 1000) / 1000;
-  return `${whole ? `${whole} ${name} of ${per}` : ''}${whole && rest ? ' + ' : ''}${rest ? `${rest} ${item.unit || 'pcs'}` : ''}`;
+  return `${whole ? `${whole} ${plural(name, whole)} of ${per}` : ''}${whole && rest ? ' + ' : ''}${rest ? `${rest} ${item.unit || 'pcs'}` : ''}`;
 }

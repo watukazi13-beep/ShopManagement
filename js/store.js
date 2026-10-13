@@ -1,7 +1,7 @@
 // App state + every action that changes data.
 import {
   DAY, monthLabel, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
-  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing,
+  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing, unitPrice, inPacks,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -363,7 +363,9 @@ export const store = {
     const merged = new Map();
     for (const l of lines) {
       if (!l.itemId || num(l.qty) <= 0) continue;
-      const m = merged.get(l.itemId) || { qty: 0, value: 0 };
+      const it0 = this.item(l.itemId) || {};
+      const m = merged.get(l.itemId) || { qty: 0, value: 0, packSize: num(l.packSize ?? it0.packSize) || 1, buyUnit: String(l.buyUnit ?? it0.buyUnit ?? '') };
+      if (m.inPacks === undefined && l.inPacks !== undefined) m.inPacks = !!l.inPacks;
       m.qty += num(l.qty);
       m.value += num(l.qty) * num(l.cost);
       merged.set(l.itemId, m);
@@ -376,7 +378,7 @@ export const store = {
       const unitCost = m.value / m.qty;
       const newCost = averageCost(it.stock, it.cost, m.qty, unitCost);
       ops.push({ type: 'incr', col: 'items', id: itemId, field: 'stock', by: m.qty, data: { cost: newCost, lastCost: unitCost, updatedBy: this.user?.email || '' } });
-      outLines.push({ itemId, name: it.name, unit: it.unit || 'pcs', qty: m.qty, cost: money(unitCost) });
+      outLines.push({ itemId, name: it.name, unit: it.unit || 'pcs', qty: m.qty, cost: unitPrice(unitCost), packSize: m.packSize, buyUnit: m.buyUnit, inPacks: m.inPacks ?? inPacks({ qty: m.qty, packSize: m.packSize, buyUnit: m.buyUnit }) });
     }
     const id = this.backend.newId('purchases');
     const total = money(outLines.reduce((t, l) => t + l.qty * l.cost, 0));
@@ -396,12 +398,16 @@ export const store = {
     for (const l of lines) {
       if (!l.itemId || num(l.qty) <= 0) continue;
       const it = this.item(l.itemId) || {};
-      const m = merged.get(l.itemId) || { itemId: l.itemId, name: it.name || l.name, sku: it.sku || '', unit: it.unit || l.unit || 'pcs', qty: 0, cost: money(l.cost), received: num(l.received) };
+      // Buying unit is copied onto the line, so the order still reads "2 cartons" if the item changes later.
+      const m = merged.get(l.itemId) || {
+        itemId: l.itemId, name: it.name || l.name, sku: it.sku || '', unit: it.unit || l.unit || 'pcs', qty: 0, cost: unitPrice(l.cost), received: num(l.received),
+        packSize: num(l.packSize ?? it.packSize) || 1, buyUnit: String(l.buyUnit ?? it.buyUnit ?? ''), _inPacks: l.inPacks,
+      };
       m.qty += num(l.qty);
-      if (num(l.cost)) m.cost = money(l.cost);
+      if (num(l.cost)) m.cost = unitPrice(l.cost);
       merged.set(l.itemId, m);
     }
-    return [...merged.values()];
+    return [...merged.values()].map(({ _inPacks, ...m }) => ({ ...m, inPacks: inPacks({ ...m, inPacks: _inPacks }) }));
   },
   /** Create (no id) or update a purchase order. Returns its id. */
   savePo(po) {
@@ -468,7 +474,10 @@ export const store = {
     if (!got.size) { this.backend.write([poOp]); return null; }
     return this.receivePurchase({
       supplierId: po.supplierId, ref, ts, paid, note, poId: po.id, poNo: po.no,
-      lines: [...got.values()].map((r) => ({ itemId: r.itemId, qty: num(r.qty), cost: num(r.cost) })),
+      lines: [...got.values()].map((r) => {
+        const l = po.lines.find((x) => x.itemId === r.itemId) || {};
+        return { itemId: r.itemId, qty: num(r.qty), cost: num(r.cost), packSize: l.packSize, buyUnit: l.buyUnit, inPacks: r.inPacks ?? l.inPacks };
+      }),
       extraOps: [poOp],
     });
   },

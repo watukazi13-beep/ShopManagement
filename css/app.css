@@ -797,3 +797,30 @@ dialog.sheet { box-shadow: var(--shadow-lg); }
 @media (prefers-reduced-motion: reduce) {
   .book, .book > * { animation: none !important; }
 }
+
+/* ---------- Buying units (carton, dozen, box…) ---------- */
+.buy-group .pack-rule { margin: 2px 0 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--pale, #E4EFE7); color: var(--forest, #0F4A2E); font-size: .84rem; font-weight: 500; }
+@media (prefers-color-scheme: dark) { .buy-group .pack-rule { background: rgb(34 180 94 / 14%); color: #CDE6D6; } }
+.field[hidden], [data-pack-fields][hidden] { display: none !important; }
+small.block, .muted.block { display: block; font-size: .74rem; }
+.line-head, .line-row { grid-template-columns: 1fr 76px 150px 120px 40px; }
+.line-head.two, .lines:not(:has(.li-cost)) .line-row { grid-template-columns: 1fr 90px 150px 40px; }
+.line-row select { min-height: 42px; padding: 8px 10px; }
+.line-row select:disabled { opacity: .65; }
+.recv-table td small { display: block; }
+.recv-table select { width: 100%; margin-top: 4px; min-height: 34px; padding: 4px 6px; font-size: .8rem; }
+.recv-table .rv-pcs { color: var(--muted); font-size: .74rem; }
+.recv-table .rv-pcs:empty { display: none; }
+@media (max-width: 480px) {
+  .line-row { grid-template-columns: .65fr 1.55fr 1fr 36px; gap: 6px; }
+  .line-row select { padding: 8px 4px 8px 8px; font-size: .9rem; }
+  .lines:not(:has(.li-cost)) .line-row { grid-template-columns: 1fr 1.4fr 40px; }
+}
+@media (max-width: 639px) {
+  .recv-table th:nth-child(2), .recv-table td:nth-child(2) { width: 56px; }
+  .recv-table th:nth-child(3), .recv-table td:nth-child(3) { width: 104px; }
+  .recv-table th:nth-child(4), .recv-table td:nth-child(4) { width: 88px; }
+}
+.recv-table input[type=number], .line-row input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.recv-table input::-webkit-inner-spin-button, .recv-table input::-webkit-outer-spin-button,
+.line-row input::-webkit-inner-spin-button, .line-row input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

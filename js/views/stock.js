@@ -1,6 +1,8 @@
 import { store } from '../store.js';
-import { num, soldQty, stockValue, DAY } from '../calc.js';
-import { esc, fmt, fmtQty, fmtDate, icon, modal, toast, field, statusPill, emptyState, confirmBox, downloadFile, toCsv, parseCsv } from '../ui.js';
+import { num, soldQty, stockValue, DAY, BUY_UNITS, plural, packInfo, orderQtyText } from '../calc.js';
+
+const cap = (t) => String(t || '').charAt(0).toUpperCase() + String(t || '').slice(1);
+import { esc, fmt, fmtQty, fmtDate, icon, modal, toast, field, fieldHtml, statusPill, emptyState, confirmBox, downloadFile, toCsv, parseCsv } from '../ui.js';
 import { openReceivePo, isLate } from './orders.js';
 
 const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'box', 'carton', 'bag', 'dozen', 'packet', 'bottle', 'tin', 'pair', 'metre'];
@@ -94,7 +96,7 @@ export default {
         const left = po.lines.filter((l) => num(l.received) < num(l.qty));
         return `<li class="row ${canRecv ? 'tap' : ''}" data-incoming="${po.id}">
           <div class="grow"><b>${esc(po.supplierName || 'Any supplier')}</b>
-            <small>${esc(po.no)} · expected ${fmtDate(po.expectedTs)} · ${left.map((l) => `${esc(l.name)} ${fmtQty(num(l.qty) - num(l.received))}`).slice(0, 3).join(', ')}${left.length > 3 ? ` +${left.length - 3} more` : ''}</small></div>
+            <small>${esc(po.no)} · expected ${fmtDate(po.expectedTs)} · ${left.map((l) => `${esc(l.name)} ${esc(orderQtyText(num(l.qty) - num(l.received), packInfo(l, store.item(l.itemId)), l.unit).replace(/ \(.*\)$/, ''))}`).slice(0, 3).join(', ')}${left.length > 3 ? ` +${left.length - 3} more` : ''}</small></div>
           ${isLate(po) ? '<span class="pill bad">Late</span>' : po.status === 'partial' ? '<span class="pill warn">Partly received</span>' : '<span class="pill info">Ordered</span>'}
           ${canRecv ? `<button type="button" class="btn primary small" data-recv="${po.id}">Receive</button>` : ''}
         </li>`;
@@ -128,15 +130,29 @@ export default {
 
 export function openItemForm(item = null) {
   const it = item || { unit: 'pcs', packSize: 1 };
+  // Buying unit: single pieces, a dozen (always 12), carton, box, set… or a name of your own.
+  const buyKinds = [['', 'Single pieces'], ...BUY_UNITS.map((u) => [u, cap(u)]), ['other', 'Other…']];
+  const kind = !it.buyUnit || !(num(it.packSize) > 1) ? '' : BUY_UNITS.includes(String(it.buyUnit).toLowerCase()) ? String(it.buyUnit).toLowerCase() : 'other';
   const cats = [...new Set(store.data.items.map((i) => i.category).filter(Boolean))].sort();
   const sups = [...store.data.suppliers].sort((a, b) => a.name.localeCompare(b.name));
   modal({
     title: item ? `Edit ${item.name}` : 'Add item',
     body: `
       ${field('Name', `<input name="name" required autofocus value="${esc(it.name)}" placeholder="e.g. Sugar 1kg">`)}
+      <fieldset class="group buy-group"><legend>How you buy it</legend>
+        <div class="grid2">
+          ${field('Buying unit', `<select name="buyKind">${buyKinds.map(([v, t]) => `<option value="${v}" ${v === kind ? 'selected' : ''}>${t}</option>`).join('')}</select>`, 'How the wholesaler sells it to you')}
+          ${field('Other unit name', `<input name="buyOther" value="${esc(kind === 'other' ? it.buyUnit : '')}" placeholder="e.g. tray, sack, tin">`)}
+        </div>
+        <div class="grid2" data-pack-fields>
+          ${fieldHtml('<span data-bu>Pieces</span> in one <span data-bu1>unit</span>', `<input name="packSize" type="number" inputmode="numeric" min="2" step="any" value="${num(it.packSize) > 1 ? it.packSize : ''}" placeholder="e.g. 12">`, 'How many you sell from one')}
+          ${fieldHtml('Price per <span data-bu1>unit</span> (TSh)', `<input name="packCost" type="number" inputmode="decimal" min="0" step="any" value="${num(it.packSize) > 1 && it.cost !== undefined ? Math.round(num(it.cost) * num(it.packSize)) : ''}">`, 'What the wholesaler charges you')}
+        </div>
+        <p class="pack-rule" data-rule></p>
+      </fieldset>
       <div class="grid2">
         ${field('Selling price (TSh)', `<input name="price" type="number" inputmode="numeric" min="0" step="1" value="${it.variablePrice ? '' : it.price ?? ''}" ${it.variablePrice ? 'disabled' : ''}>`)}
-        ${field('Cost price (TSh)', `<input name="cost" type="number" inputmode="decimal" min="0" step="any" value="${it.cost !== undefined ? Math.round(num(it.cost) * 100) / 100 : ''}">`, item ? 'Updates automatically when you receive stock' : 'What you pay the supplier per unit')}
+        ${fieldHtml('Cost per <span data-pc>' + esc(it.unit || 'pcs') + '</span> (TSh)', `<input name="cost" type="number" inputmode="decimal" min="0" step="any" value="${it.cost !== undefined ? Math.round(num(it.cost) * 100) / 100 : ''}">`, item ? 'Updates automatically when you receive stock' : 'What one piece costs you')}
       </div>
       <label class="check"><input type="checkbox" name="variablePrice" ${it.variablePrice ? 'checked' : ''}> Price is entered at the time of sale</label>
       <div class="grid2">
@@ -149,10 +165,6 @@ export function openItemForm(item = null) {
           ${field('Minimum stock', `<input name="minStock" type="number" inputmode="decimal" min="0" step="any" value="${it.minStock ?? ''}" placeholder="auto">`, 'Alert and order at or below this')}
           ${field('Maximum stock', `<input name="maxStock" type="number" inputmode="decimal" min="0" step="any" value="${it.maxStock || ''}" placeholder="not set">`, 'Orders fill up to this')}
         </div>
-        <div class="grid2">
-          ${field('Bought in', `<input name="buyUnit" list="buyunit-list" value="${esc(it.buyUnit || '')}" placeholder="e.g. box, ream, carton"><datalist id="buyunit-list">${['box', 'ream', 'carton', 'packet', 'dozen', 'bundle', 'bag'].map((u) => `<option value="${u}">`).join('')}</datalist>`, 'Leave empty if bought one by one')}
-          ${field('Pieces in each', `<input name="packSize" type="number" inputmode="decimal" min="1" step="any" value="${it.packSize || 1}">`, 'Orders are rounded up to whole packs')}
-        </div>
         ${field('Usual supplier', `<select name="supplierId"><option value="">— None —</option>${sups.map((s) => `<option value="${s.id}" ${s.id === it.supplierId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`)}
       </fieldset>
       <details class="more"><summary>Barcode, SKU and more</summary>
@@ -164,6 +176,32 @@ export function openItemForm(item = null) {
       </details>`,
     actions: `${item ? '<button type="button" class="btn ghost danger" data-archive>Remove</button>' : ''}<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">${item ? 'Save changes' : 'Add item'}</button>`,
     onMount: (dlg, close) => {
+      const f = dlg.querySelector('form');
+      const unitName = () => (f.buyKind.value === 'other' ? f.buyOther.value.trim() || 'unit' : f.buyKind.value);
+      const pcName = () => f.unit.value.trim() || 'pcs';
+      const showPack = () => {
+        const k = f.buyKind.value;
+        f.buyOther.closest('.field').hidden = k !== 'other';
+        dlg.querySelector('[data-pack-fields]').hidden = !k;
+        if (k === 'dozen') { f.packSize.value = 12; f.packSize.readOnly = true; } else f.packSize.readOnly = false;
+        dlg.querySelectorAll('[data-bu1]').forEach((e) => { e.textContent = unitName(); });
+        dlg.querySelectorAll('[data-bu]').forEach((e) => { e.textContent = cap(pcName()); });
+        dlg.querySelectorAll('[data-pc]').forEach((e) => { e.textContent = pcName(); });
+        const per = num(f.packSize.value);
+        const rule = dlg.querySelector('[data-rule]');
+        rule.textContent = k && per > 1
+          ? `1 ${unitName()} = ${per} ${pcName()}${num(f.packCost.value) ? ` · ${fmt(num(f.packCost.value))} per ${unitName()} = ${fmt(num(f.packCost.value) / per)} per ${pcName() === 'pcs' ? 'piece' : pcName()}` : ''}. Orders are made in ${plural(unitName(), 2)}; receiving 1 ${unitName()} adds ${per} ${pcName()} to stock.`
+          : k ? `Enter how many ${pcName()} are in one ${unitName()}.` : 'Ordered and received one by one.';
+      };
+      // Price per carton ↔ cost per piece stay in step.
+      const fromPack = () => { const per = num(f.packSize.value); if (per > 1 && f.packCost.value !== '') f.cost.value = Math.round((num(f.packCost.value) / per) * 100) / 100; };
+      f.buyKind.addEventListener('change', () => { showPack(); if (f.buyKind.value === 'other') f.buyOther.focus(); else if (f.buyKind.value && f.buyKind.value !== 'dozen') f.packSize.focus(); fromPack(); showPack(); });
+      f.packSize.addEventListener('input', () => { fromPack(); showPack(); });
+      f.packCost.addEventListener('input', () => { fromPack(); showPack(); });
+      f.buyOther.addEventListener('input', showPack);
+      f.unit.addEventListener('input', showPack);
+      f.cost.addEventListener('input', () => { const per = num(f.packSize.value); if (f.buyKind.value && per > 1 && f.cost.value !== '') f.packCost.value = Math.round(num(f.cost.value) * per); showPack(); });
+      showPack();
       const vp = dlg.querySelector('[name=variablePrice]');
       vp.addEventListener('change', () => { const p = dlg.querySelector('[name=price]'); p.disabled = vp.checked; if (vp.checked) p.value = ''; });
       dlg.querySelector('[data-archive]')?.addEventListener('click', async () => {
@@ -179,6 +217,15 @@ export function openItemForm(item = null) {
       if (dup) throw new Error(`An item called “${dup.name}” already exists`);
       if (num(v.maxStock) > 0 && num(v.maxStock) <= num(v.minStock)) throw new Error('Maximum stock must be more than minimum stock');
       const variablePrice = v.variablePrice === 'on';
+      // Buying unit: none (single pieces) or a named unit with how many pieces are in it.
+      let buyUnit = '', packSize = 1;
+      if (v.buyKind) {
+        buyUnit = v.buyKind === 'other' ? String(v.buyOther || '').trim() : v.buyKind;
+        packSize = v.buyKind === 'dozen' ? 12 : num(v.packSize);
+        if (!buyUnit) throw new Error('Enter the name of the buying unit, e.g. tray');
+        if (!(packSize > 1)) throw new Error(`Enter how many ${v.unit || 'pcs'} are in one ${buyUnit}`);
+      }
+      v.buyUnit = buyUnit; v.packSize = packSize;
       if (!variablePrice && v.price === '') throw new Error('Enter a selling price, or tick “Price is entered at the time of sale”');
       store.saveItem({ ...v, price: variablePrice ? 0 : v.price, id: item?.id, service: v.service === 'on', variablePrice });
       toast(item ? 'Changes saved' : `${v.name} added`);

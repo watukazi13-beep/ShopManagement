@@ -132,6 +132,10 @@ export function confirmBox(message, { ok = 'Confirm', danger = false } = {}) {
 export function field(label, input, hint = '') {
   return `<label class="field"><span class="field-label">${esc(label)}</span>${input}${hint ? `<small>${esc(hint)}</small>` : ''}</label>`;
 }
+/** Same as field(), for a label that carries its own markup (e.g. a unit name that updates as you type). */
+export function fieldHtml(labelHtml, input, hint = '') {
+  return `<label class="field"><span class="field-label">${labelHtml}</span>${input}${hint ? `<small>${esc(hint)}</small>` : ''}</label>`;
+}
 
 export function downloadFile(name, content, type = 'text/plain') {
   const blob = content instanceof Blob ? content : new Blob([content], { type });

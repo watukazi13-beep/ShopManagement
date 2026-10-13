@@ -1,5 +1,5 @@
 import { store } from '../store.js';
-import { num, DAY, docNo, packsText } from '../calc.js';
+import { num, DAY, docNo, packsText, packInfo, inPacks, orderQtyText, packRule, plural, unitPrice } from '../calc.js';
 import { esc, fmt, fmtQty, fmtDate, icon, modal, toast, field, emptyState, confirmBox, printHtml, toInputDate, fromInputDate } from '../ui.js';
 
 const STATUS = { draft: ['Draft', ''], sent: ['Sent', 'warn'], quoted: ['Quote received', 'good'], ordered: ['PO created', 'good'], closed: ['Goods received', 'good'] };
@@ -140,30 +140,90 @@ export default {
 function itemOptions() {
   return `<datalist id="items-dl">${store.activeItems().filter((i) => !i.service).map((i) => `<option value="${esc(i.name)}">`).join('')}</datalist>`;
 }
+const round3 = (n) => Math.round(num(n) * 1000) / 1000;
+const itemByName = (name) => store.activeItems().find((i) => i.name.toLowerCase() === String(name || '').trim().toLowerCase());
+
+/** Order unit choices for an item: its buying unit (e.g. "carton · 24 pcs") and single pieces. Value = pieces per unit. */
+function unitOptions(pack, pieceUnit, big) {
+  const pc = pieceUnit || 'pcs';
+  if (!pack) return `<option value="1">${esc(pc)}</option>`;
+  return `<option value="${pack.per}" ${big ? 'selected' : ''}>${esc(pack.unit)} · ${fmtQty(pack.per)} ${esc(pc)}</option><option value="1" ${big ? '' : 'selected'}>${esc(pc)}</option>`;
+}
+/** The small line under a row: "= 48 pcs" when ordering cartons, or "= 2 cartons" when ordering pieces. */
+function lineHint(qtyShown, factor, pack, pieceUnit) {
+  const q = num(qtyShown);
+  if (!pack || !q) return '';
+  const pcs = q * factor;
+  return factor > 1 ? `= ${fmtQty(round3(pcs))} ${pieceUnit || 'pcs'} into stock · ${packRule(pack, pieceUnit)}` : (packsText(pcs, { packSize: pack.per, buyUnit: pack.unit, unit: pieceUnit }) ? `= ${packsText(pcs, { packSize: pack.per, buyUnit: pack.unit, unit: pieceUnit })}` : '');
+}
+/** How a saved line was ordered: 2 cartons of 24 at TSh 36,000 per carton, or 10 pcs at TSh 2,000. */
+function asOrdered(l) {
+  const it = store.item(l.itemId);
+  const pc = l.unit || it?.unit || 'pcs';
+  const pack = packInfo(l, it);
+  const big = !!pack && inPacks(l, it);
+  const f = big ? pack.per : 1;
+  return {
+    pack, big, f, pc, pieces: num(l.qty),
+    qty: round3(num(l.qty) / f),
+    unit: big ? pack.unit : pc,
+    unitLabel: big ? `${cap(pack.unit)} of ${fmtQty(pack.per)} ${pc}` : cap(pc),
+    price: num(l.cost) * f,
+  };
+}
+const cap = (t) => String(t || '').charAt(0).toUpperCase() + String(t || '').slice(1);
+/** "2 cartons × 24 pcs = 48 pcs" or "10 pcs" */
+function orderedText(o, qty = o.pieces) {
+  if (!o.big) return `${fmtQty(qty)} ${o.pc}`;
+  const n = round3(num(qty) / o.f);
+  return `${fmtQty(n)} ${plural(o.unit, n)} × ${fmtQty(o.f)} ${o.pc} = ${fmtQty(qty)} ${o.pc}`;
+}
+
 function lineRow(l, withCost) {
+  const it = l.itemId ? store.item(l.itemId) : null;
+  const pack = it || l.packSize ? packInfo(l, it) : null;
+  const big = !!pack && inPacks(l, it);
+  const f = big ? pack.per : 1;
+  const qty = l.qty === undefined || l.qty === '' ? '' : round3(num(l.qty) / f);
+  const cost = l.cost === undefined || l.cost === '' ? '' : Math.round(num(l.cost) * f * 100) / 100;
+  const pc = it?.unit || l.unit || 'pcs';
   return `<div class="line-row">
     <input class="li-name" list="items-dl" placeholder="Item" value="${esc(l.name || '')}" data-id="${l.itemId || ''}" aria-label="Item">
-    <label class="li-f"><span>Qty</span><input class="li-qty" type="number" inputmode="decimal" step="any" min="0" placeholder="Qty" value="${l.qty ?? ''}" aria-label="Quantity"></label>
-    ${withCost ? `<label class="li-f"><span>Unit price</span><input class="li-cost" type="number" inputmode="decimal" step="any" min="0" placeholder="Unit price" value="${l.cost ?? ''}" aria-label="Price per unit"></label>` : ''}
+    <label class="li-f"><span>Qty</span><input class="li-qty" type="number" inputmode="decimal" step="any" min="0" placeholder="Qty" value="${qty}" aria-label="Quantity"></label>
+    <label class="li-f"><span>Unit</span><select class="li-unit" aria-label="Order unit" ${pack ? '' : 'disabled'}>${unitOptions(pack, pc, big)}</select></label>
+    ${withCost ? `<label class="li-f"><span>Price per unit</span><input class="li-cost" type="number" inputmode="decimal" step="any" min="0" placeholder="Price" value="${cost}" aria-label="Price per unit"></label>` : ''}
     <button type="button" class="icon-btn" data-del-line aria-label="Remove line">${icon('x')}</button>
-    ${!withCost && l.itemId && store.item(l.itemId) && !(num(store.item(l.itemId).maxStock) > 0) ? '<small class="li-note">Max not set — quantity is an estimate. Set it in Stock → Min / max.</small>' : ''}
-    <small class="li-pack">${l.itemId && store.item(l.itemId) ? esc(packsText(l.qty, store.item(l.itemId))) : ''}</small>
+    ${!withCost && it && !(num(it.maxStock) > 0) ? '<small class="li-note">Max not set — quantity is an estimate. Set it in Stock → Min / max.</small>' : ''}
+    <small class="li-pack">${esc(lineHint(qty, f, pack, pc))}</small>
   </div>`;
 }
+/** Read the rows back into lines counted in pieces (qty) with the price per piece (cost). */
 function readLines(dlg) {
-  const byName = new Map(store.activeItems().map((i) => [i.name.toLowerCase(), i]));
   const out = [];
   for (const row of dlg.querySelectorAll('.line-row')) {
     const name = row.querySelector('.li-name').value.trim();
     if (!name) continue;
-    const item = byName.get(name.toLowerCase());
+    const item = itemByName(name);
     if (!item) throw new Error(`“${name}” is not in your items. Add it in Stock first.`);
-    out.push({ itemId: item.id, name: item.name, unit: item.unit || 'pcs', qty: num(row.querySelector('.li-qty').value), cost: num(row.querySelector('.li-cost')?.value), lastCost: num(item.lastCost || item.cost) });
+    const f = num(row.querySelector('.li-unit')?.value) || 1;
+    const pack = packInfo({}, item);
+    out.push({
+      itemId: item.id, name: item.name, unit: item.unit || 'pcs',
+      qty: round3(num(row.querySelector('.li-qty').value) * f),
+      cost: unitPrice(num(row.querySelector('.li-cost')?.value) / f),
+      lastCost: num(item.lastCost || item.cost),
+      packSize: pack ? pack.per : 1, buyUnit: pack ? pack.unit : '', inPacks: !!pack && f > 1,
+    });
   }
   return out;
 }
 function wireLines(dlg, withCost, onChange) {
   const box = dlg.querySelector('.lines');
+  const hint = (row) => {
+    const it = itemByName(row.querySelector('.li-name').value);
+    const pack = it ? packInfo({}, it) : null;
+    row.querySelector('.li-pack').textContent = lineHint(row.querySelector('.li-qty').value, num(row.querySelector('.li-unit').value) || 1, pack, it?.unit);
+  };
   dlg.querySelector('[data-add-line]').addEventListener('click', () => {
     box.insertAdjacentHTML('beforeend', lineRow({}, withCost));
     box.lastElementChild.querySelector('input').focus();
@@ -172,16 +232,34 @@ function wireLines(dlg, withCost, onChange) {
     if (e.target.closest('[data-del-line]')) { e.target.closest('.line-row').remove(); onChange?.(); }
   });
   box.addEventListener('change', (e) => {
-    if (!e.target.classList.contains('li-name')) return;
-    const it = store.activeItems().find((i) => i.name.toLowerCase() === e.target.value.trim().toLowerCase());
     const row = e.target.closest('.line-row');
-    if (it && withCost && !row.querySelector('.li-cost').value) row.querySelector('.li-cost').value = Math.round(num(it.lastCost || it.cost));
+    if (!row) return;
+    if (e.target.classList.contains('li-name')) {
+      // New item chosen: offer its buying unit (cartons, dozens…) first, with the price per that unit.
+      const it = itemByName(e.target.value);
+      const pack = it ? packInfo({}, it) : null;
+      const sel = row.querySelector('.li-unit');
+      sel.innerHTML = unitOptions(pack, it?.unit, !!pack);
+      sel.disabled = !pack;
+      const c = row.querySelector('.li-cost');
+      if (it && withCost && !c.value) c.value = Math.round(num(it.lastCost || it.cost) * (num(sel.value) || 1));
+    }
+    if (e.target.classList.contains('li-unit')) {
+      // Switching cartons ↔ pieces keeps the same amount: 2 cartons of 24 becomes 48 pcs.
+      const prev = num(e.target.dataset.prev) || num([...e.target.options].find((o) => o.value !== e.target.value)?.value) || 1;
+      const now = num(e.target.value) || 1;
+      const q = row.querySelector('.li-qty'), c = row.querySelector('.li-cost');
+      if (q.value !== '') q.value = round3(num(q.value) * prev / now);
+      if (c && c.value !== '') c.value = Math.round(num(c.value) * now / prev * 100) / 100;
+    }
+    hint(row);
+    row.querySelector('.li-unit').dataset.prev = row.querySelector('.li-unit').value;
     onChange?.();
   });
+  box.addEventListener('focusin', (e) => { if (e.target.classList.contains('li-unit')) e.target.dataset.prev = e.target.value; });
   box.addEventListener('input', (e) => {
     const row = e.target.closest('.line-row');
-    const it = row && store.activeItems().find((i) => i.name.toLowerCase() === row.querySelector('.li-name').value.trim().toLowerCase());
-    if (row) row.querySelector('.li-pack').textContent = it ? packsText(row.querySelector('.li-qty').value, it) : '';
+    if (row) hint(row);
     onChange?.();
   });
 }
@@ -203,7 +281,7 @@ export function openPurchaseForm({ rfq = null } = {}) {
         ${field('Invoice / delivery no.', '<input name="ref" autocomplete="off">')}
       </div>
       ${itemOptions()}
-      <div class="line-head"><span>Item</span><span>Qty</span><span>Unit cost (TSh)</span><span></span></div>
+      <div class="line-head"><span>Item</span><span>Qty</span><span>Unit</span><span>Price per unit (TSh)</span><span></span></div>
       <div class="lines">${start.map((l) => lineRow(l, true)).join('')}</div>
       <button type="button" class="btn ghost small" data-add-line>${icon('plus')}Add line</button>
       <p class="total-row"><span>Total</span><strong id="pf-total">${fmt(0)}</strong></p>
@@ -234,8 +312,8 @@ function openPurchase(p) {
     title: `Received ${fmtDate(p.ts)}`,
     body: `
       <p class="muted">${esc(p.supplierName || 'No supplier')}${p.ref ? ' · ' + esc(p.ref) : ''} · ${esc(p.no)}</p>
-      <table class="table"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Unit cost</th><th class="r">Amount</th></tr></thead>
-      <tbody>${p.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="r num">${fmtQty(l.qty)} ${esc(l.unit || '')}</td><td class="r num">${fmt(l.cost)}</td><td class="r num">${fmt(l.qty * l.cost)}</td></tr>`).join('')}
+      <table class="table"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Price per unit</th><th class="r">Amount</th></tr></thead>
+      <tbody>${p.lines.map((l) => { const o = asOrdered(l); return `<tr><td>${esc(l.name)}</td><td class="r num">${fmtQty(o.qty)} ${esc(plural(o.unit, o.qty))}${o.big ? `<small class="muted block">${fmtQty(o.pieces)} ${esc(o.pc)}</small>` : ''}</td><td class="r num">${fmt(o.price)}${o.big ? `<small class="muted block">per ${esc(o.unit)}</small>` : ''}</td><td class="r num">${fmt(l.qty * l.cost)}</td></tr>`; }).join('')}
       <tr class="tot"><td colspan="3">Total</td><td class="r num">${fmt(p.total)}</td></tr></tbody></table>
       ${p.note ? `<p>${esc(p.note)}</p>` : ''}`,
     actions: `<button type="button" class="btn ghost" data-paid>${p.paid ? 'Mark as unpaid' : 'Mark as paid'}</button><button class="btn primary">Done</button>`,
@@ -280,9 +358,9 @@ export function rfqText(r) {
     '',
     r.note || '',
     '',
-    ...r.lines.map((l, i) => `${i + 1}. ${l.name} — ${fmtQty(l.qty)} ${l.unit}${packsText(l.qty, store.item(l.itemId)) ? ` (${packsText(l.qty, store.item(l.itemId))})` : ''}`),
+    ...r.lines.map((l, i) => `${i + 1}. ${l.name} — ${orderedText(asOrdered(l))}`),
     '',
-    'Please reply with your unit prices and delivery time. Thank you.',
+    'Please reply with your price per unit and delivery time. Thank you.',
   ].join('\n');
 }
 
@@ -296,9 +374,9 @@ function printRfq(r) {
     </div>
     <div class="box"><b>To:</b> ${esc(sup?.name || r.supplierName || '')}<br>${esc([sup?.contact, sup?.phone, sup?.email, sup?.address].filter(Boolean).join(' · '))}</div>
     <p>${esc(r.note || '')}</p>
-    <table><thead><tr><th>#</th><th>Item</th><th>Unit</th><th class="r">Quantity</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead>
-    <tbody>${r.lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(l.unit)}</td><td class="r">${fmtQty(l.qty)}${packsText(l.qty, store.item(l.itemId)) ? `<br><small class="muted">${esc(packsText(l.qty, store.item(l.itemId)))}</small>` : ''}</td><td></td><td></td></tr>`).join('')}
-    <tr class="tot"><td colspan="5">Total</td><td></td></tr></tbody></table>
+    <table><thead><tr><th>#</th><th>Item</th><th>Unit</th><th class="r">Qty</th><th class="r">Total pieces</th><th class="r">Price per unit</th><th class="r">Amount</th></tr></thead>
+    <tbody>${r.lines.map((l, i) => { const o = asOrdered(l); return `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(o.unitLabel)}</td><td class="r">${fmtQty(o.qty)}</td><td class="r">${fmtQty(o.pieces)} ${esc(o.pc)}</td><td></td><td></td></tr>`; }).join('')}
+    <tr class="tot"><td colspan="6">Total</td><td></td></tr></tbody></table>
     <p>Please state delivery time, payment terms and how long your prices are valid.</p>
     <div class="sig"><div>Requested by</div><div>Supplier signature &amp; stamp</div></div>`);
 }
@@ -317,7 +395,7 @@ export function openRfq(id) {
         ${field('Status', `<select name="status">${Object.entries(STATUS).map(([k, [t]]) => `<option value="${k}" ${k === r.status ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
       </div>
       ${itemOptions()}
-      <div class="line-head two"><span>Item</span><span>Qty</span><span></span></div>
+      <div class="line-head two"><span>Item</span><span>Qty</span><span>Unit</span><span></span></div>
       <div class="lines">${r.lines.map((l) => lineRow(l, false)).join('')}</div>
       <button type="button" class="btn ghost small" data-add-line>${icon('plus')}Add line</button>
       ${field('Message to supplier', `<textarea name="note" rows="2">${esc(r.note)}</textarea>`)}
@@ -333,7 +411,7 @@ export function openRfq(id) {
       wireLines(dlg, false);
       const current = () => {
         const f = dlg.querySelector('form');
-        const lines = readLines(f).map(({ itemId, name, unit, qty, lastCost }) => ({ itemId, name, unit, qty, lastCost }));
+        const lines = readLines(f).map(({ itemId, name, unit, qty, lastCost, packSize, buyUnit, inPacks: ip }) => ({ itemId, name, unit, qty, lastCost, packSize, buyUnit, inPacks: ip }));
         return { ...r, supplierId: f.supplierId.value, status: f.status.value, note: f.note.value, lines };
       };
       const persist = (extra = {}) => { const c = { ...current(), ...extra }; store.saveRfq(c); return { ...c, supplierName: store.supplier(c.supplierId)?.name || 'Any supplier' }; };
@@ -356,7 +434,7 @@ export function openRfq(id) {
       });
     },
     onSubmit: (v, { form }) => {
-      const lines = readLines(form).map(({ itemId, name, unit, qty, lastCost }) => ({ itemId, name, unit, qty, lastCost }));
+      const lines = readLines(form).map(({ itemId, name, unit, qty, lastCost, packSize, buyUnit, inPacks: ip }) => ({ itemId, name, unit, qty, lastCost, packSize, buyUnit, inPacks: ip }));
       store.saveRfq({ ...r, supplierId: v.supplierId, status: v.status, note: v.note, lines });
       toast('Request saved');
     },
@@ -374,7 +452,7 @@ export function poText(po) {
     '',
     po.note || '',
     '',
-    ...po.lines.map((l, i) => `${i + 1}. ${l.name} — ${fmtQty(l.qty)} ${l.unit}${packsText(l.qty, store.item(l.itemId)) ? ` (${packsText(l.qty, store.item(l.itemId))})` : ''}${l.cost ? ` @ ${fmt(l.cost)} = ${fmt(l.qty * l.cost)}` : ''}`),
+    ...po.lines.map((l, i) => { const o = asOrdered(l); return `${i + 1}. ${l.name} — ${orderedText(o)}${l.cost ? ` @ ${fmt(o.price)} per ${o.unit} = ${fmt(l.qty * l.cost)}` : ''}`; }),
     '',
     `TOTAL: ${fmt(po.total)}`,
   ].join('\n');
@@ -390,9 +468,10 @@ export function printPo(po) {
     </div>
     <div class="box"><b>Supplier:</b> ${esc(sup?.name || po.supplierName || '')}<br>${esc([sup?.contact, sup?.phone, sup?.email, sup?.address].filter(Boolean).join(' · '))}</div>
     <p>${esc(po.note || '')}</p>
-    <table><thead><tr><th>#</th><th>Item</th><th>Unit</th><th class="r">Quantity</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead>
-    <tbody>${po.lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(l.unit)}</td><td class="r">${fmtQty(l.qty)}${packsText(l.qty, store.item(l.itemId)) ? `<br><small class="muted">${esc(packsText(l.qty, store.item(l.itemId)))}</small>` : ''}</td><td class="r">${fmt(l.cost)}${num(store.item(l.itemId)?.packSize) > 1 ? `<br><small class="muted">${fmt(l.cost * num(store.item(l.itemId).packSize))} per ${esc(store.item(l.itemId).buyUnit || 'pack')}</small>` : ''}</td><td class="r">${fmt(l.qty * l.cost)}</td></tr>`).join('')}
-    <tr class="tot"><td colspan="5">Total</td><td class="r">${fmt(po.total)}</td></tr></tbody></table>
+    <table><thead><tr><th>#</th><th>Item</th><th>Unit</th><th class="r">Qty</th><th class="r">Total pieces</th><th class="r">Price per unit</th><th class="r">Amount</th></tr></thead>
+    <tbody>${po.lines.map((l, i) => { const o = asOrdered(l); return `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(o.unitLabel)}</td><td class="r">${fmtQty(o.qty)}</td><td class="r">${fmtQty(o.pieces)} ${esc(o.pc)}</td><td class="r">${fmt(o.price)}${o.big ? `<br><small class="muted">${fmt(l.cost)} per ${esc(o.pc === 'pcs' ? 'piece' : o.pc)}</small>` : ''}</td><td class="r">${fmt(l.qty * l.cost)}</td></tr>`; }).join('')}
+    <tr class="tot"><td colspan="6">Total</td><td class="r">${fmt(po.total)}</td></tr></tbody></table>
+    ${po.lines.some((l) => asOrdered(l).big) ? '<p class="muted small">Quantities are in the unit shown (carton, dozen, box…). Total pieces is what we count into stock.</p>' : ''}
     <div class="sig"><div>Authorised by</div><div>Supplier signature &amp; stamp</div></div>`);
 }
 
@@ -418,11 +497,11 @@ export function openPo(id) {
       </div>
       ${editable ? `
         ${itemOptions()}
-        <div class="line-head"><span>Item</span><span>Qty</span><span>Unit price (TSh)</span><span></span></div>
+        <div class="line-head"><span>Item</span><span>Qty</span><span>Unit</span><span>Price per unit (TSh)</span><span></span></div>
         <div class="lines">${lines.map((l) => lineRow(l, true)).join('')}</div>
         <button type="button" class="btn ghost small" data-add-line>${icon('plus')}Add line</button>`
       : `<table class="table"><thead><tr><th>Item</th><th class="r">Ordered</th><th class="r">Received</th><th class="r">Unit price</th><th class="r hide-sm">Amount</th></tr></thead>
-        <tbody>${po.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="r num">${fmtQty(l.qty)} ${esc(l.unit)}</td><td class="r num ${num(l.received) >= num(l.qty) ? 'up' : num(l.received) ? 'warn-text' : ''}">${fmtQty(l.received || 0)}</td><td class="r num">${fmt(l.cost)}</td><td class="r num hide-sm">${fmt(l.qty * l.cost)}</td></tr>`).join('')}</tbody></table>`}
+        <tbody>${po.lines.map((l) => { const o = asOrdered(l); return `<tr><td>${esc(l.name)}${o.big ? `<small class="muted block">${esc(packRule(o.pack, o.pc))}</small>` : ''}</td><td class="r num">${fmtQty(o.qty)} ${esc(plural(o.unit, o.qty))}${o.big ? `<small class="muted block">${fmtQty(o.pieces)} ${esc(o.pc)}</small>` : ''}</td><td class="r num ${num(l.received) >= num(l.qty) ? 'up' : num(l.received) ? 'warn-text' : ''}">${o.big ? `${fmtQty(round3(num(l.received) / o.f))} ${esc(plural(o.unit, round3(num(l.received) / o.f)))}<small class="muted block">${fmtQty(l.received || 0)} ${esc(o.pc)}</small>` : fmtQty(l.received || 0)}</td><td class="r num">${fmt(o.price)}<small class="muted block">per ${esc(o.unit)}</small></td><td class="r num hide-sm">${fmt(l.qty * l.cost)}</td></tr>`; }).join('')}</tbody></table>`}
       <p class="total-row"><span>Total</span><strong id="po-total">${fmt(po?.total || 0)}</strong></p>
       ${field('Message to supplier', `<textarea name="note" rows="2" ${editable ? '' : 'disabled'}>${esc(po?.note ?? store.settings.poNote ?? '')}</textarea>`)}`,
     actions: `
@@ -451,7 +530,7 @@ export function openPo(id) {
         else data.expectedTs = po?.expectedTs;
         if (editable) {
           data.supplierId = form.supplierId.value;
-          data.lines = readLines(form).map(({ itemId, qty, cost }) => ({ itemId, qty, cost }));
+          data.lines = readLines(form).map(({ itemId, qty, cost, packSize, buyUnit, inPacks: ip }) => ({ itemId, qty, cost, packSize, buyUnit, inPacks: ip }));
           data.note = form.note.value;
           if (!data.lines.length) throw new Error('Add at least one item with a quantity');
         } else { data.supplierId = po.supplierId; data.lines = po.lines; data.note = po.note; }
@@ -495,7 +574,7 @@ export function openPo(id) {
       data.expectedTs = form.expected && !form.expected.disabled ? fromInputDate(form.expected.value) : po?.expectedTs;
       if (editable) {
         data.supplierId = v.supplierId;
-        data.lines = readLines(form).map(({ itemId, qty, cost }) => ({ itemId, qty, cost }));
+        data.lines = readLines(form).map(({ itemId, qty, cost, packSize, buyUnit, inPacks: ip }) => ({ itemId, qty, cost, packSize, buyUnit, inPacks: ip }));
         if (!data.lines.length) throw new Error('Add at least one item with a quantity');
       } else { data.supplierId = po.supplierId; data.lines = po.lines; }
       store.savePo(data);
@@ -514,16 +593,24 @@ export function openReceivePo(id) {
     wide: true,
     body: `
       <p class="muted">${esc(po.supplierName)} · ordered ${fmtDate(po.orderedAt || po.ts)} · expected ${fmtDate(po.expectedTs)}</p>
-      <p class="small">Check the delivery. The quantities still to come are filled in — change any that arrived short, and the price if it changed.</p>
+      <p class="small">Check the delivery. The quantities still to come are filled in — change any that arrived short, and the price if it changed. Count cartons, dozens and boxes as they arrive: the pieces go into stock automatically.</p>
       <table class="table recv-table">
-        <thead><tr><th>Item</th><th class="r">To come</th><th class="r">Arrived</th><th class="r">Unit price</th></tr></thead>
-        <tbody>${po.lines.map((l) => `
-          <tr data-item="${l.itemId}" ${left(l) ? '' : 'class="muted"'}>
-            <td>${esc(l.name)}<small>${num(l.received) ? `${fmtQty(l.received)} of ${fmtQty(l.qty)} already received` : `${fmtQty(l.qty)} ${esc(l.unit)} ordered`}${packsText(l.qty, store.item(l.itemId)) ? ` · ${esc(packsText(l.qty, store.item(l.itemId)))}` : ''}</small></td>
-            <td class="r num">${fmtQty(left(l))}</td>
-            <td class="r"><input class="rv-qty" type="number" inputmode="decimal" min="0" step="any" value="${left(l) || ''}" ${left(l) ? '' : 'disabled'} aria-label="Arrived of ${esc(l.name)}"></td>
-            <td class="r"><input class="rv-cost" type="number" inputmode="decimal" min="0" step="any" value="${l.cost}" ${left(l) ? '' : 'disabled'} aria-label="Unit price of ${esc(l.name)}"></td>
-          </tr>`).join('')}</tbody>
+        <thead><tr><th>Item</th><th class="r">To come</th><th class="r">Arrived</th><th class="r">Price per unit</th></tr></thead>
+        <tbody>${po.lines.map((l) => {
+          const o = asOrdered(l);
+          const rest = left(l);
+          // Show cartons when what is left is whole cartons; otherwise count in pieces.
+          const big = o.big && Math.abs(rest / o.f - Math.round(rest / o.f)) < 1e-9;
+          const f = big ? o.f : 1;
+          return `
+          <tr data-item="${l.itemId}" data-per="${o.pack ? o.pack.per : 1}" ${rest ? '' : 'class="muted"'}>
+            <td>${esc(l.name)}<small>${num(l.received) ? `${esc(orderedText(o, num(l.received)))} of ${esc(orderedText(o))} received` : `Ordered ${esc(orderedText(o))}`}</small></td>
+            <td class="r num">${o.big ? `${esc(orderQtyText(rest, o.pack, o.pc).replace(/ \(.*\)$/, ''))}<small>${fmtQty(rest)} ${esc(o.pc)}</small>` : `${fmtQty(rest)}<small>${esc(o.pc)}</small>`}</td>
+            <td class="r"><input class="rv-qty" type="number" inputmode="decimal" min="0" step="any" value="${rest ? round3(rest / f) : ''}" ${rest ? '' : 'disabled'} aria-label="Arrived of ${esc(l.name)}">
+              <select class="rv-unit" aria-label="Unit counted for ${esc(l.name)}" ${rest && o.pack ? '' : 'disabled'}>${unitOptions(o.pack, o.pc, big)}</select>
+              <small class="rv-pcs"></small></td>
+            <td class="r"><input class="rv-cost" type="number" inputmode="decimal" min="0" step="any" value="${Math.round(num(l.cost) * f * 100) / 100}" ${rest ? '' : 'disabled'} aria-label="Price per unit of ${esc(l.name)}"></td>
+          </tr>`; }).join('')}</tbody>
       </table>
       <p class="total-row"><span>Value of this delivery</span><strong id="rv-total"></strong></p>
       <div class="grid2">
@@ -539,18 +626,38 @@ export function openReceivePo(id) {
         dlg.querySelectorAll('tbody tr').forEach((tr) => {
           const q = tr.querySelector('.rv-qty');
           if (q.disabled) return;
+          const f = num(tr.querySelector('.rv-unit').value) || 1;
           t += num(q.value) * num(tr.querySelector('.rv-cost').value);
           const l = po.lines.find((x) => x.itemId === tr.dataset.item);
-          if (num(q.value) < left(l)) short = true;
+          const pcs = round3(num(q.value) * f);
+          tr.querySelector('.rv-pcs').textContent = f > 1 && q.value !== '' ? `= ${fmtQty(pcs)} ${l.unit || 'pcs'}` : '';
+          if (pcs < left(l)) short = true;
         });
         dlg.querySelector('#rv-total').textContent = fmt(t);
         dlg.querySelector('#rv-short-wrap').hidden = !short;
       };
+      // Switching cartons ↔ pieces keeps the same amount.
+      dlg.addEventListener('focusin', (e) => { if (e.target.classList.contains('rv-unit')) e.target.dataset.prev = e.target.value; });
+      dlg.addEventListener('change', (e) => {
+        if (!e.target.classList.contains('rv-unit')) return;
+        const tr = e.target.closest('tr');
+        const prev = num(e.target.dataset.prev) || num([...e.target.options].find((o) => o.value !== e.target.value)?.value) || 1;
+        const now = num(e.target.value) || 1;
+        const q = tr.querySelector('.rv-qty'), c = tr.querySelector('.rv-cost');
+        if (q.value !== '') q.value = round3(num(q.value) * prev / now);
+        if (c.value !== '') c.value = Math.round(num(c.value) * now / prev * 100) / 100;
+        e.target.dataset.prev = e.target.value;
+        upd();
+      });
       dlg.addEventListener('input', upd);
       upd();
     },
     onSubmit: (v, { form }) => {
-      const receipts = [...form.querySelectorAll('tbody tr')].map((tr) => ({ itemId: tr.dataset.item, qty: num(tr.querySelector('.rv-qty').value), cost: num(tr.querySelector('.rv-cost').value) }));
+      // Everything is converted back to pieces: 2 cartons of 24 → 48 pcs into stock, price per piece.
+      const receipts = [...form.querySelectorAll('tbody tr')].map((tr) => {
+        const f = num(tr.querySelector('.rv-unit').value) || 1;
+        return { itemId: tr.dataset.item, qty: round3(num(tr.querySelector('.rv-qty').value) * f), cost: unitPrice(num(tr.querySelector('.rv-cost').value) / f), inPacks: f > 1 };
+      });
       const over = receipts.find((r) => { const l = po.lines.find((x) => x.itemId === r.itemId); return r.qty > left(l); });
       if (over) throw new Error(`More ${po.lines.find((x) => x.itemId === over.itemId).name} than ordered — change the order first, or record the extra with Receive stock`);
       store.receivePo(po, receipts, { ts: fromInputDate(v.date), ref: v.ref, paid: v.paid === 'on', closeShort: v.closeShort === 'on' });
