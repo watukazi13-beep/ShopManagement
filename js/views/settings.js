@@ -103,9 +103,14 @@ export default {
 
         <section class="card about">
           <div class="card-head"><h2>About</h2></div>
-          <p><b>${esc(APP_NAME)}</b> · version ${esc(VERSION)} · ${store.mode === 'local' ? 'trial mode' : 'synced with Firebase'}</p>
-          <p>Made by <b>${esc(MAKER)}</b></p>
-          <p>Author: <b>${esc(AUTHOR)}</b></p>
+          <div class="about-row">
+            <img src="brand/app-icon.svg" alt="" width="48" height="48">
+            <div><b>${esc(APP_NAME)}</b><small>Version ${esc(VERSION)} · ${store.mode === 'local' ? 'trial mode' : 'synced'}</small></div>
+          </div>
+          <div class="about-dev">
+            <img src="brand/developers-logo.svg" alt="${esc(MAKER)}">
+            <p>Developed by <b>${esc(MAKER)}</b><br>Author: <b>${esc(AUTHOR)}</b></p>
+          </div>
         </section>`;
 
       el.querySelector('#shop-form')?.addEventListener('submit', (e) => {

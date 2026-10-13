@@ -27,6 +27,8 @@ with sync_playwright() as p:
     ctx = b.new_context(viewport={'width': W, 'height': H})
     # Tests never touch the real Firebase project: serve a blank config.
     ctx.route('**/js/config.js', lambda r: r.fulfill(status=200, body="export const firebaseConfig = { apiKey: '' };", headers={'content-type': 'text/javascript'}))
+    # The web font comes from Google; tests run without internet, so serve an empty stylesheet.
+    ctx.route('https://fonts.googleapis.com/**', lambda r: r.fulfill(status=200, body='', headers={'content-type': 'text/css'}))
     ctx.add_init_script("window.__opened=[]; window.open=(u)=>{window.__opened.push(u); return null;}; window.print=()=>{};")
     pg = ctx.new_page()
     errs = []
@@ -44,8 +46,8 @@ with sync_playwright() as p:
         dlg().get_by_role('button', name=label, exact=True).click(); pg.wait_for_timeout(250)
 
     pg.goto(URL); pg.wait_for_timeout(500)
-    credit = 'Made by Greenlight Stationeries · Author: Michael Kepha'
-    check(pg.locator('.gate-card .credit').inner_text() == credit, 'credit shown on the start screen')
+    credit = 'Developed by Greenlight Developers · Author: Michael Kepha'
+    check(pg.locator('.gate-card .credit p').inner_text() == credit and pg.locator('.gate-card .credit img').count() == 1, 'developer logo and credit on the start screen')
     pg.click('#g-local'); pg.wait_for_timeout(900)
     check(pg.locator('.hero-figure').inner_text().startswith('TSh 0'), 'home loads in device mode')
     check(pg.locator('.getting-started').count() == 1, 'Home offers the shop setup')
@@ -78,7 +80,7 @@ with sync_playwright() as p:
     pg.click('#shop-form button.primary'); pg.wait_for_timeout(300)
     check(pg.locator('#shop-name').inner_text() == 'Duka la Mama', 'shop name saved and shown in header')
     about = pg.locator('.about').inner_text()
-    check('Greenlight Stationeries' in about and 'Michael Kepha' in about, 'credit shown in Settings → About')
+    check('Greenlight Developers' in about and 'Michael Kepha' in about and pg.locator('.about-dev img').count() == 1, 'developer shown in Settings → About')
     check(pg.locator('.nav-credit').is_visible() == (W >= 900), 'credit in the side menu on computers only')
 
     # --- Supplier

@@ -32,6 +32,8 @@ def new_context(b):
     ctx = b.new_context(viewport={'width': 390, 'height': 844}, service_workers='block')
     # Tests never touch the real Firebase project: serve a blank config and a stand-in Firebase.
     ctx.route('**/js/config.js', lambda r: r.fulfill(status=200, body="export const firebaseConfig = { apiKey: '' };", headers={'content-type': 'text/javascript'}))
+    # The web font comes from Google; tests run without internet, so serve an empty stylesheet.
+    ctx.route('https://fonts.googleapis.com/**', lambda r: r.fulfill(status=200, body='', headers={'content-type': 'text/css'}))
     def serve(route):
         name = route.request.url.rsplit('/', 1)[-1]
         route.fulfill(status=200, body=(FAKE / name).read_text(), headers={'content-type': 'text/javascript', 'access-control-allow-origin': '*'})

@@ -1,6 +1,6 @@
 // Service worker: makes the app open and work with no internet.
 // Bump VERSION whenever app files change so devices pick up the update.
-const VERSION = 'v18';
+const VERSION = 'v20';
 const CACHE = `shop-${VERSION}`;
 const APP_FILES = [
   './',
@@ -11,6 +11,12 @@ const APP_FILES = [
   './js/config.js',
   './js/brand.js',
   './js/install.js',
+  './brand/app-icon.svg',
+  './brand/symbol.svg',
+  './brand/symbol-on-dark.svg',
+  './brand/developers-logo.svg',
+  './brand/developers-logo-on-dark.svg',
+  './icons/apple-touch-icon.png',
   './js/store.js',
   './js/calc.js',
   './js/ui.js',
@@ -58,6 +64,16 @@ self.addEventListener('fetch', (e) => {
       const res = await fetch(req);
       if (res.ok) c.put(req, res.clone());
       return res;
+    }));
+    return;
+  }
+
+  // The Inter font from Google Fonts: keep a copy so the app looks the same offline.
+  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+    e.respondWith(caches.open('shop-lib').then(async (c) => {
+      const hit = await c.match(req);
+      if (hit) return hit;
+      try { const res = await fetch(req); if (res.ok || res.type === 'opaque') c.put(req, res.clone()); return res; } catch { return Response.error(); }
     }));
     return;
   }

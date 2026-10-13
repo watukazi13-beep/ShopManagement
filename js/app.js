@@ -2,7 +2,7 @@ import { store } from './store.js';
 import { firebaseConfig } from './config.js';
 import { createLocalBackend } from './backend-local.js';
 import { esc, icon, toast, modal } from './ui.js';
-import { MAKER, AUTHOR } from './brand.js';
+import { MAKER, AUTHOR, CREDIT, bookLoader } from './brand.js';
 import { installApp, isInstalled } from './install.js';
 import home from './views/home.js';
 import sell from './views/sell.js';
@@ -31,11 +31,21 @@ function gate(title, html) {
   shell = false;
   current = null;
   document.body.classList.remove('has-shell');
-  root.innerHTML = `<main class="gate"><div class="gate-card">
-    <div class="logo">${icon('stock')}</div>
-    <h1>${esc(title)}</h1>${html}
-    ${isInstalled() ? '' : `<button type="button" class="link install-link" id="g-install">${icon('download')}Install this app on this device</button>`}
-    <p class="credit">Made by ${esc(MAKER)} · Author: ${esc(AUTHOR)}</p></div></main>`;
+  root.innerHTML = `<main class="gate">
+    <aside class="gate-brand" aria-hidden="true">
+      <img class="gate-symbol" src="brand/symbol-on-dark.svg" alt="">
+      <div>
+        <p class="gate-app">Shop Manager</p>
+        <p class="gate-tag">Sales, stock and profit for your shop — on phone, tablet and computer, with or without internet.</p>
+      </div>
+      <img class="gate-dev" src="brand/developers-logo-on-dark.svg" alt="">
+    </aside>
+    <section class="gate-main"><div class="gate-card">
+      <img class="gate-icon" src="brand/app-icon.svg" alt="" width="52" height="52">
+      <h1>${esc(title)}</h1>${html}
+      ${isInstalled() ? '' : `<button type="button" class="link install-link" id="g-install">${icon('download')}Install this app on this device</button>`}
+      <div class="credit"><img src="brand/developers-logo.svg" alt="Greenlight Developers" class="credit-logo"><p>${esc(CREDIT)}</p></div>
+    </div></section></main>`;
   root.querySelector('#g-install')?.addEventListener('click', installApp);
 }
 
@@ -125,7 +135,10 @@ function showNoAccess() {
 }
 
 function showWaiting(text) {
-  gate('Shop Manager', `<p class="loading">${esc(text)}</p>`);
+  // Keep the same book running if it is already on screen; just change the words.
+  const line = root.querySelector('.splash .splash-text');
+  if (line) { line.textContent = text; return; }
+  root.innerHTML = bookLoader(text);
 }
 
 async function signOut() {
@@ -150,14 +163,15 @@ function showShell() {
   const links = NAV.filter(([, , , perm]) => !perm || store.can(perm));
   root.innerHTML = `
     <header class="topbar">
-      <a href="#/home" class="brand" id="brand"><span class="logo sm">${icon('stock')}</span><span id="shop-name"></span><span id="shop-caret"></span></a>
+      <a href="#/home" class="brand" id="brand"><img class="brand-icon" src="brand/app-icon.svg" alt="" width="32" height="32"><span class="brand-text"><span id="shop-name"></span><small class="brand-sub">Shop Manager</small></span><span id="shop-caret"></span></a>
       <span class="sync" id="sync" role="status"></span>
       <a href="#/settings" class="icon-btn" aria-label="Settings">${icon('settings')}</a>
     </header>
     <nav class="nav" aria-label="Main">
+      <a href="#/home" class="nav-brand" tabindex="-1" aria-hidden="true"><img src="brand/symbol-on-dark.svg" alt="" width="30" height="30"><span>Shop Manager</span></a>
       ${links.map(([id, label, ic]) => `<a href="#/${id}" data-nav="${id}">${icon(ic)}<span>${label}</span></a>`).join('')}
       <a href="#/settings" data-nav="settings" class="nav-settings">${icon('settings')}<span>Settings</span></a>
-      <p class="nav-credit">Made by ${esc(MAKER)}<br>Author: ${esc(AUTHOR)}</p>
+      <div class="nav-credit"><span>Developed by</span><img src="brand/developers-logo-on-dark.svg" alt="${esc(MAKER)}"><span>Author: ${esc(AUTHOR)}</span></div>
     </nav>
     <main id="view" class="view" tabindex="-1"></main>`;
   document.getElementById('brand').addEventListener('click', (e) => {

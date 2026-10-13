@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Shop Manager — business book with the Greenlight G">
+  <rect width="512" height="512" rx="115.2" fill="#0F4A2E"/>
+  <!-- page block behind the cover -->
+  <rect x="158" y="114" width="226" height="300" rx="14" fill="#CDE6D6"/>
+  <g stroke="#9CCBAE" stroke-width="3" stroke-linecap="round">
+    <line x1="372" y1="150" x2="372" y2="396"/>
+    <line x1="378" y1="150" x2="378" y2="396"/>
+    <line x1="176" y1="402" x2="366" y2="402"/>
+    <line x1="176" y1="408" x2="366" y2="408"/>
+  </g>
+  <!-- cover -->
+  <rect x="128" y="96" width="236" height="300" rx="16" fill="#FFFFFF"/>
+  <!-- spine -->
+  <path d="M144 96h28v300h-28a16 16 0 0 1-16-16V112a16 16 0 0 1 16-16z" fill="#E4EFE7"/>
+  <line x1="172" y1="96" x2="172" y2="396" stroke="#CDE6D6" stroke-width="3"/>
+  <!-- bookmark ribbon -->
+  <path d="M318 96h26v70l-13-11-13 11z" fill="#22B45E"/>
+  <!-- the Greenlight G with its green pixel -->
+  <g transform="translate(205 168) scale(1.18)">
+    <path d="M80.780,15.815 A46.0,46.0 0 1 0 96.000,50.000 L84.500,50.000 A31.5,31.5 0 1 1 72.368,25.158 Z" fill="#0F4A2E"/>
+    <path d="M57.0,50 L88.500,50 L88.500,62.0 L57.0,62.0 Z" fill="#0F4A2E"/>
+    <rect x="77.725" y="23.651" width="13.804" height="13.804" fill="#22B45E"/>
+  </g>
+  <!-- title lines on the cover -->
+  <rect x="214" y="320" width="106" height="10" rx="5" fill="#CDE6D6"/>
+  <rect x="232" y="342" width="70" height="8" rx="4" fill="#E4EFE7"/>
+</svg>

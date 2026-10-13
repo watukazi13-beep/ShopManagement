@@ -5,18 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Shop Manager</title>
   <meta name="description" content="Sales, stock, costs and monthly profit for your shop. Works offline.">
-  <meta name="author" content="Michael Kepha, Greenlight Stationeries">
-  <meta name="theme-color" content="#0b6e4f">
+  <meta name="author" content="Michael Kepha, Greenlight Developers">
+  <meta name="theme-color" content="#0F4A2E">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon-192.png" type="image/png">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="brand/app-icon.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Shop">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <div id="app"><main class="gate"><p class="loading">Loading…</p></main></div>
+  <div id="app"><main class="splash" role="status" aria-live="polite">
+  <div class="book" aria-hidden="true">
+    <div class="bk-back"><div class="bk-ledger"></div></div>
+    <div class="bk-page p1"></div><div class="bk-page p2"></div><div class="bk-page p3"></div>
+    <div class="bk-cover"><div class="bk-front"><img src="brand/symbol.svg" alt=""><i></i><b></b></div><div class="bk-inside"></div></div>
+  </div>
+  <p class="splash-name">Shop Manager</p>
+  <p class="splash-text">Loading…</p>
+  <img class="splash-dev" src="brand/developers-logo-on-dark.svg" alt="Greenlight Developers">
+</main></div>
   <noscript>This app needs JavaScript turned on.</noscript>
   <script type="module" src="js/app.js"></script>
 </body>
