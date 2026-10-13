@@ -198,21 +198,36 @@ export const store = {
         supplierId = s.id;
       }
       const existing = (r.sku && bySku.get(r.sku.toLowerCase())) || byName.get(r.name.toLowerCase());
-      const base = {
-        name: r.name, sku: r.sku || '', barcode: r.barcode || '', category: r.category || '',
-        price: money(r.price), cost: num(r.cost), lastCost: num(r.cost), minStock: num(r.minStock),
-        unit: r.unit || 'pcs', service: !!r.service, variablePrice: !!r.variablePrice, active: true, ...this._stamp(),
-      };
-      if (r.maxStock !== undefined && r.maxStock !== '') base.maxStock = num(r.maxStock);
-      if (supplierId) base.supplierId = supplierId;
+      const has = (v) => v !== undefined && v !== null && String(v).trim() !== '';
+      const pack = has(r.packSize) && num(r.packSize) > 1
+        ? { packSize: num(r.packSize), buyUnit: String(r.buyUnit || '').trim() || 'pack' }
+        : has(r.packSize) || (has(r.buyUnit) && /^(single|pcs|piece|each|-)$/i.test(String(r.buyUnit).trim())) ? { packSize: 1, buyUnit: '' } : null;
       if (existing) {
-        if (r.stock !== undefined && r.stock !== '') base.stock = r.service ? 0 : num(r.stock);
-        ops.push({ type: 'merge', col: 'items', id: existing.id, data: base });
+        // Update: only what the file fills in. Empty cells keep what is saved (prices, levels, stock…).
+        const d = { name: r.name, active: true, ...this._stamp() };
+        for (const k of ['sku', 'barcode', 'category', 'unit']) if (has(r[k])) d[k] = String(r[k]).trim();
+        if (has(r.price)) { d.price = money(r.price); if (r.variablePrice === undefined) d.variablePrice = false; }
+        if (has(r.cost)) { d.cost = num(r.cost); d.lastCost = num(r.cost); }
+        if (has(r.minStock)) d.minStock = num(r.minStock);
+        if (has(r.maxStock)) d.maxStock = num(r.maxStock);
+        if (r.service !== undefined) d.service = !!r.service;
+        if (r.variablePrice !== undefined) d.variablePrice = !!r.variablePrice;
+        if (pack) Object.assign(d, pack);
+        if (supplierId) d.supplierId = supplierId;
+        if (has(r.stock)) d.stock = (d.service ?? existing.service) ? 0 : num(r.stock);
+        ops.push({ type: 'merge', col: 'items', id: existing.id, data: d });
         updated++;
       } else {
+        const service = !!r.service;
         ops.push({
           type: 'set', col: 'items', id: this.backend.newId('items'),
-          data: { maxStock: 0, packSize: 1, supplierId: '', ...base, stock: r.service ? 0 : num(r.stock), createdAt: Date.now() },
+          data: {
+            name: r.name, sku: String(r.sku || '').trim(), barcode: String(r.barcode || '').trim(), category: String(r.category || '').trim(),
+            unit: String(r.unit || '').trim() || 'pcs', price: money(r.price), cost: num(r.cost), lastCost: num(r.cost),
+            minStock: num(r.minStock), maxStock: num(r.maxStock), packSize: 1, buyUnit: '', ...(pack || {}), supplierId,
+            service, variablePrice: r.variablePrice ?? !!r.priceBlank, active: true,
+            stock: service ? 0 : num(r.stock), createdAt: Date.now(), ...this._stamp(),
+          },
         });
         added++;
       }

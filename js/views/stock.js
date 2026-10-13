@@ -305,9 +305,9 @@ function openItem(item) {
 }
 
 function exportItems() {
-  const rows = [['Name', 'Category', 'SKU', 'Barcode', 'Unit', 'Price', 'Cost', 'In stock', 'Minimum stock', 'Maximum stock', 'Pack size', 'Supplier', 'Track stock', 'Variable price']];
+  const rows = [['Name', 'Category', 'SKU', 'Barcode', 'Unit', 'Price', 'Cost', 'In stock', 'Minimum stock', 'Maximum stock', 'Bought in', 'Pieces in each', 'Supplier', 'Track stock', 'Variable price']];
   for (const i of store.activeItems()) {
-    rows.push([i.name, i.category, i.sku, i.barcode, i.unit, i.variablePrice ? '' : i.price, Math.round(num(i.cost) * 100) / 100, i.service ? '' : i.stock, i.minStock, i.maxStock, i.packSize, store.supplier(i.supplierId)?.name || '', i.service ? 'N' : 'Y', i.variablePrice ? 'Y' : 'N']);
+    rows.push([i.name, i.category, i.sku, i.barcode, i.unit, i.variablePrice ? '' : i.price, Math.round(num(i.cost) * 100) / 100, i.service ? '' : i.stock, i.minStock, i.maxStock, num(i.packSize) > 1 ? i.buyUnit || 'pack' : '', num(i.packSize) > 1 ? i.packSize : '', store.supplier(i.supplierId)?.name || '', i.service ? 'N' : 'Y', i.variablePrice ? 'Y' : 'N']);
   }
   downloadFile(`items-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows), 'text/csv');
 }
@@ -337,7 +337,9 @@ export function mapColumns(header) {
     variable: find(/^variable price$/),
     byWeight: find(/^sold by weight$/),
     supplier: find(/^primary supplier$/, /^supplier$/),
-    unit: find(/^unit$/),
+    unit: find(/^unit$/, /^sold by$/),
+    buyUnit: find(/^bought in$/, /^buying unit$/, /^buy unit$/),
+    packSize: find(/^pieces in each$/, /^pieces in one/, /^pack size$/, /^per pack$/),
   };
 }
 
@@ -356,20 +358,38 @@ export function rowsFromCsv(text) {
     else { lastName = name; lastHandle = handle; }
     const opts = [get(r, 'opt1'), get(r, 'opt2')].filter(Boolean).join(' ');
     if (!name) continue;
-    const yes = (k) => /^(y|yes|true|1)$/i.test(get(r, k));
-    const no = (k) => /^(n|no|false|0)$/i.test(get(r, k));
+    const yes = (k) => /^(y|yes|true|1|ndiyo)$/i.test(get(r, k));
+    const no = (k) => /^(n|no|false|0|hapana)$/i.test(get(r, k));
+    // true / false when the file says so; undefined when the cell is empty (an existing item keeps its setting).
+    const flag = (k) => (yes(k) ? true : no(k) ? false : undefined);
+    const tracked = flag('track');
     out.push({
       name: opts ? `${name} ${opts}` : name,
       sku: get(r, 'sku'), barcode: get(r, 'barcode'), category: get(r, 'category'),
       price: get(r, 'price'), cost: get(r, 'cost'), stock: get(r, 'stock'),
       minStock: get(r, 'minStock'), maxStock: get(r, 'maxStock'), supplier: get(r, 'supplier'),
       unit: get(r, 'unit') || (yes('byWeight') ? 'kg' : ''),
-      // Loyverse: "Track stock" = N means a service; a blank price means "price entered at sale".
-      service: yes('service') || no('track'),
-      variablePrice: yes('variable') || (m.price >= 0 && get(r, 'price') === ''),
+      buyUnit: get(r, 'buyUnit'), packSize: get(r, 'packSize'),
+      // Loyverse: "Track stock" = N means a service; a blank price means "price entered at sale" (for new items).
+      service: flag('service') ?? (tracked === undefined ? undefined : !tracked),
+      variablePrice: flag('variable'),
+      priceBlank: m.price >= 0 && get(r, 'price') === '',
     });
   }
   return out;
+}
+
+/** A ready-to-fill example: every column the importer reads, with typical stationery rows. */
+export function sampleCsv() {
+  return toCsv([
+    ['Name', 'Category', 'SKU', 'Barcode', 'Unit', 'Price', 'Cost', 'In stock', 'Minimum stock', 'Maximum stock', 'Bought in', 'Pieces in each', 'Supplier', 'Track stock', 'Variable price'],
+    ['Blue Pen (Bic)', 'Pens', 'PEN-BLUE', '', 'pcs', 300, 200, 50, 20, 60, 'dozen', 12, 'Example Wholesaler', 'Y', 'N'],
+    ['Counter Book Q4', 'Exercise books', 'CB-Q4', '', 'pcs', 4000, 2800, 10, 5, 15, 'carton', 24, 'Example Wholesaler', 'Y', 'N'],
+    ['Ream A4 Double A', 'Paper', 'RM-DA', '', 'pcs', 19000, 15200, 5, 2, 6, 'box', 5, 'Example Paper Supplier', 'Y', 'N'],
+    ['Mathematical set', 'Geometry', 'MATH-SET', '', 'pcs', 3000, 1450, 4, 1, 3, '', '', '', 'Y', 'N'],
+    ['Photocopy', 'Services', 'SRV-COPY', '', 'page', 100, '', '', '', '', '', '', '', 'N', 'N'],
+    ['Printing (price at sale)', 'Services', 'SRV-PRINT', '', 'page', '', '', '', '', '', '', '', '', 'N', 'Y'],
+  ]);
 }
 
 function openImport() {
@@ -383,11 +403,14 @@ function openImport() {
         <li>Click <b>Export</b> and save the CSV file.</li>
         <li>Choose that file below.</li>
       </ol>
-      <p class="muted small">Any spreadsheet saved as CSV also works if it has columns like Name, Category, Price, Cost, In stock, Low stock. Items already in the app are updated (matched by SKU or name).</p>
+      <p class="muted small">Any spreadsheet saved as CSV also works. Start from the sample file — it has every column and example rows (single pieces, a dozen, a carton and a service).</p>
+      <p><button type="button" class="btn ghost small" data-sample>${icon('download')}Download sample CSV</button></p>
+      <p class="muted small">Items already in the app are matched by SKU or name and <b>only the cells you fill in are changed</b> — leave a cell empty to keep what is saved (e.g. a file with just Name, Minimum stock and Maximum stock updates only the levels).</p>
       <input type="file" name="file" accept=".csv,text/csv" required>
       <div id="imp-preview"></div>`,
     actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary" id="imp-go" disabled>Import</button>',
     onMount: (dlg) => {
+      dlg.querySelector('[data-sample]').addEventListener('click', () => downloadFile('shop-items-sample.csv', sampleCsv(), 'text/csv'));
       const prev = dlg.querySelector('#imp-preview');
       dlg.querySelector('input[type=file]').addEventListener('change', async (e) => {
         const f = e.target.files[0];
@@ -395,7 +418,11 @@ function openImport() {
         try {
           rows = rowsFromCsv(await f.text());
           prev.innerHTML = rows.length
-            ? `<p><b>${rows.length}</b> items found. First few:</p><ul class="rows">${rows.slice(0, 5).map((r) => `<li class="row"><div class="grow">${esc(r.name)}<small>${esc(r.category)}</small></div><span class="num">${fmt(r.price)} · ${fmtQty(r.stock || 0)}</span></li>`).join('')}</ul>`
+            ? (() => {
+              const known = (r) => store.activeItems().some((i) => (r.sku && i.sku && i.sku.toLowerCase() === r.sku.toLowerCase()) || i.name.toLowerCase() === r.name.toLowerCase());
+              const upd = rows.filter(known).length;
+              return `<p><b>${rows.length}</b> items found: <b>${rows.length - upd}</b> new, <b>${upd}</b> to update. First few:</p><ul class="rows">${rows.slice(0, 5).map((r) => `<li class="row"><div class="grow">${esc(r.name)}<small>${known(r) ? 'Update' : 'New'}${r.category ? ' · ' + esc(r.category) : ''}${r.minStock !== '' || r.maxStock !== '' ? ` · min ${esc(r.minStock || '—')} / max ${esc(r.maxStock || '—')}` : ''}</small></div><span class="num">${r.price !== '' ? fmt(r.price) : '—'}${r.stock !== '' ? ' · ' + fmtQty(r.stock) : ''}</span></li>`).join('')}</ul>`;
+            })()
             : '<p class="warn-text">No items found in this file.</p>';
           dlg.querySelector('#imp-go').disabled = !rows.length;
         } catch (err) {
