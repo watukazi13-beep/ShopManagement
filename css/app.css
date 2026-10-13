@@ -885,3 +885,26 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 /* Owner gives a manager extra permission */
 .member-row { align-items: flex-start; }
 .perm-switch { margin-top: 6px; font-size: .84rem; color: var(--ink); }
+
+/* ---------- Document columns: blank boxes for the supplier, and the Columns editor ---------- */
+.doc table.has-blank td { height: 30px; }
+.doc td.blank { min-width: 72px; background: #fafafa; border-left: 1px dotted #bbb; border-right: 1px dotted #bbb; }
+.lay-list { display: grid; gap: 6px; }
+.lay-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.lay-name { flex: 1 1 140px; font-weight: 600; font-size: .92rem; }
+.lay-title { flex: 1 1 140px; min-height: 38px; padding: 6px 10px; }
+.lay-h { margin: 18px 0 6px; font-size: .95rem; }
+.lay-default { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.seg.mini { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.seg.mini label { position: relative; padding: 6px 10px; border-radius: 8px; font-size: .8rem; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.seg.mini label input { position: absolute; opacity: 0; pointer-events: none; }
+.seg.mini label.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.seg.mini label:has(input:focus-visible) { outline: 2px solid var(--signal); outline-offset: 1px; }
+@media (max-width: 480px) { .seg.mini label { padding: 6px 7px; font-size: .74rem; } }
+.doc .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.doc .tbl-wrap table { min-width: 100%; }
+.doc .tbl-wrap th { white-space: nowrap; }
+@media print { .doc .tbl-wrap { overflow: visible; } .doc .tbl-wrap th { white-space: normal; } }
+.lay-row[data-custom] { flex-wrap: nowrap; }
+.lay-row[data-custom] .lay-title { min-width: 0; flex: 1 1 auto; }
+@media (max-width: 480px) { .lay-row[data-custom] .seg.mini label { padding: 6px 5px; } }

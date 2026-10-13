@@ -1,5 +1,6 @@
 import { store } from '../store.js';
 import { num, DAY, docNo, packsText, packInfo, inPacks, orderQtyText, packRule, plural, unitPrice } from '../calc.js';
+import { layoutFor, visibleColumns, openLayoutEditor } from './doclayout.js';
 import { esc, fmt, fmtQty, fmtDate, icon, modal, toast, field, emptyState, confirmBox, printHtml, toInputDate, fromInputDate } from '../ui.js';
 
 const STATUS = { draft: ['Draft', ''], sent: ['Sent', 'warn'], quoted: ['Quote received', 'good'], ordered: ['PO created', 'good'], closed: ['Goods received', 'good'] };
@@ -349,36 +350,95 @@ const waNumber = (phone) => {
   return d;
 };
 
+/** Cell value for one column of one line (plain text; html=true allows a small second line). */
+function colValue(kind, key, l, i, costOf, html) {
+  const cost = costOf(l);
+  const o = asOrdered({ ...l, cost });
+  switch (key) {
+    case 'no': return String(i + 1);
+    case 'sku': return l.sku || store.item(l.itemId)?.sku || '';
+    case 'unit': return o.unitLabel;
+    case 'qty': return fmtQty(o.qty);
+    case 'pieces': return `${fmtQty(o.pieces)} ${o.pc}`;
+    case 'price':
+      if (!cost) return '';
+      return fmt(o.price) + (html && o.big && kind === 'po' ? `<br><small class="muted">${fmt(cost)} per ${o.pc === 'pcs' ? 'piece' : esc(o.pc)}</small>` : '');
+    case 'amount': return cost ? fmt(num(l.qty) * cost) : '';
+    default: return '';
+  }
+}
+const RIGHT = new Set(['qty', 'pieces', 'price', 'amount']);
+
+/** The item table of an RFQ or PO, following its layout (filled / blank for the supplier / hidden). */
+function docTable(kind, lines, layout, costOf) {
+  const cols = visibleColumns(layout);
+  const before = cols.filter((c) => c.key === 'no');
+  const after = cols.filter((c) => c.key !== 'no');
+  const th = (c) => `<th class="${RIGHT.has(c.key) ? 'r' : ''}">${esc(c.title)}</th>`;
+  const td = (c, l, i) => (c.mode === 'blank'
+    ? `<td class="blank${RIGHT.has(c.key) ? ' r' : ''}"></td>`
+    : `<td class="${RIGHT.has(c.key) ? 'r' : ''}">${c.key === 'price' ? colValue(kind, c.key, l, i, costOf, true) : esc(colValue(kind, c.key, l, i, costOf))}</td>`);
+  const amount = cols.find((c) => c.key === 'amount');
+  const total = lines.reduce((t, l) => t + num(l.qty) * costOf(l), 0);
+  const span = before.length + 1 + after.filter((c) => c !== amount).length;
+  const amountIdx = after.indexOf(amount);
+  const tail = amount ? after.length - amountIdx - 1 : 0;
+  return `<div class="tbl-wrap"><table class="${cols.some((c) => c.mode === 'blank') ? 'has-blank' : ''}"><thead><tr>${before.map(th).join('')}<th>Item</th>${after.map(th).join('')}</tr></thead>
+    <tbody>${lines.map((l, i) => `<tr>${before.map((c) => td(c, l, i)).join('')}<td>${esc(l.name)}</td>${after.map((c) => td(c, l, i)).join('')}</tr>`).join('')}
+    ${amount ? `<tr class="tot"><td colspan="${span - tail}">Total</td><td class="r${amount.mode === 'blank' ? ' blank' : ''}">${amount.mode === 'fill' && total ? fmt(total) : ''}</td>${tail ? `<td colspan="${tail}"></td>` : ''}</tr>` : ''}</tbody></table></div>`;
+}
+
+/** The same lines as text for WhatsApp / email: blanks become "______" for the supplier to fill. */
+function docTextLines(kind, lines, layout, costOf) {
+  const cols = visibleColumns(layout).filter((c) => c.key !== 'no');
+  return lines.map((l, i) => `${i + 1}. ${l.name}${cols.length ? ' — ' : ''}${cols.map((c) => `${c.title}: ${c.mode === 'blank' ? '______' : colValue(kind, c.key, l, i, costOf) || '______'}`).join(' · ')}`);
+}
+
+/** Header, supplier box and the optional parts (address, terms, message, signatures). */
+function docParts(kind, layout) {
+  const st = store.settings;
+  return {
+    address: layout.parts.address ? `<div class="box"><b>Deliver to:</b> ${esc(st.shopName)}${st.address ? ', ' + esc(st.address) : ''}${st.phone ? ' · ' + esc(st.phone) : ''}</div>` : '',
+    terms: layout.parts.terms ? '<p><b>Payment terms:</b> ____________________________________________</p>' : '',
+    sig: layout.parts.signatures ? `<div class="sig"><div>${kind === 'rfq' ? 'Requested by' : 'Authorised by'}</div><div>Supplier signature &amp; stamp</div></div>` : '',
+  };
+}
+
 export function rfqText(r) {
   const st = store.settings;
+  const L = layoutFor('rfq', r);
+  const cost = (l) => num(l.quotedCost || l.lastCost);
   return [
     `REQUEST FOR QUOTATION ${r.no}`,
     `From: ${st.shopName}${st.phone ? ' (' + st.phone + ')' : ''}`,
-    `Date: ${fmtDate(r.ts)}`,
+    `Date: ${fmtDate(r.ts)}${L.parts.dates ? ` · Reply by: ${fmtDate(r.ts + 7 * DAY)}` : ''}`,
+    ...(L.parts.address ? [`Deliver to: ${st.shopName}${st.address ? ', ' + st.address : ''}`] : []),
     '',
-    r.note || '',
+    ...(L.parts.note && r.note ? [r.note, ''] : []),
+    ...docTextLines('rfq', r.lines, L, cost),
     '',
-    ...r.lines.map((l, i) => `${i + 1}. ${l.name} — ${orderedText(asOrdered(l))}`),
-    '',
-    'Please reply with your price per unit and delivery time. Thank you.',
+    ...(L.parts.terms ? ['Payment terms: ______', ''] : []),
+    'Please reply with the figures marked ______ and your delivery time. Thank you.',
   ].join('\n');
 }
 
 function printRfq(r) {
   const st = store.settings;
   const sup = store.supplier(r.supplierId);
+  const L = layoutFor('rfq', r);
+  const P = docParts('rfq', L);
   printHtml(`${r.no}`, `
     <div class="head">
       <div><h1>${esc(st.shopName)}</h1><div class="muted">${esc(st.address)}<br>${esc(st.phone)} ${esc(st.email)}${st.tin ? '<br>TIN ' + esc(st.tin) : ''}</div></div>
-      <div style="text-align:right"><h1>Request for quotation</h1><div>No. <b>${esc(r.no)}</b><br>Date: ${fmtDate(r.ts)}<br>Reply by: ${fmtDate(r.ts + 7 * DAY)}</div></div>
+      <div style="text-align:right"><h1>Request for quotation</h1><div>No. <b>${esc(r.no)}</b><br>Date: ${fmtDate(r.ts)}${L.parts.dates ? `<br>Reply by: ${fmtDate(r.ts + 7 * DAY)}` : ''}</div></div>
     </div>
     <div class="box"><b>To:</b> ${esc(sup?.name || r.supplierName || '')}<br>${esc([sup?.contact, sup?.phone, sup?.email, sup?.address].filter(Boolean).join(' · '))}</div>
-    <p>${esc(r.note || '')}</p>
-    <table><thead><tr><th>#</th><th>Item</th><th>Unit</th><th class="r">Qty</th><th class="r">Total pieces</th><th class="r">Price per unit</th><th class="r">Amount</th></tr></thead>
-    <tbody>${r.lines.map((l, i) => { const o = asOrdered(l); return `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(o.unitLabel)}</td><td class="r">${fmtQty(o.qty)}</td><td class="r">${fmtQty(o.pieces)} ${esc(o.pc)}</td><td></td><td></td></tr>`; }).join('')}
-    <tr class="tot"><td colspan="6">Total</td><td></td></tr></tbody></table>
-    <p>Please state delivery time, payment terms and how long your prices are valid.</p>
-    <div class="sig"><div>Requested by</div><div>Supplier signature &amp; stamp</div></div>`);
+    ${P.address}
+    ${L.parts.note && r.note ? `<p>${esc(r.note)}</p>` : ''}
+    ${docTable('rfq', r.lines, L, (l) => num(l.quotedCost || l.lastCost))}
+    ${P.terms}
+    ${L.parts.note ? '<p>Please fill in the empty boxes and state how long your prices are valid.</p>' : ''}
+    ${P.sig}`);
 }
 
 export function openRfq(id) {
@@ -404,16 +464,20 @@ export function openRfq(id) {
       <button type="button" class="btn ghost danger" data-del>${icon('trash')}<span class="hide-sm">Delete</span></button>
       <button type="button" class="btn ghost" data-wa>${icon('wa')}WhatsApp</button>
       <button type="button" class="btn ghost" data-mail>${icon('mail')}<span class="hide-sm">Email</span></button>
+      <button type="button" class="btn ghost" data-layout>${icon('orders')}<span class="hide-sm">Columns</span></button>
       <button type="button" class="btn ghost" data-print>${icon('print')}<span class="hide-sm">Print / PDF</span></button>
       ${r.status !== 'closed' && r.status !== 'ordered' ? '<button type="button" class="btn ghost" data-make-po>Make purchase order</button>' : ''}
       <button class="btn primary">Save</button>`,
     onMount: (dlg, close) => {
       wireLines(dlg, false);
+      let layout = r.layout || null; // this request's own columns, once chosen
       const current = () => {
         const f = dlg.querySelector('form');
         const lines = readLines(f).map(({ itemId, name, unit, qty, lastCost, packSize, buyUnit, inPacks: ip }) => ({ itemId, name, unit, qty, lastCost, packSize, buyUnit, inPacks: ip }));
-        return { ...r, supplierId: f.supplierId.value, status: f.status.value, note: f.note.value, lines };
+        return { ...r, supplierId: f.supplierId.value, status: f.status.value, note: f.note.value, lines, ...(layout ? { layout } : {}) };
       };
+      dlg.querySelector('[data-layout]').addEventListener('click', () => openLayoutEditor('rfq', layoutFor('rfq', { layout }), (out) => { layout = out; dlg._layout = out; }));
+      dlg._layout = layout;
       const persist = (extra = {}) => { const c = { ...current(), ...extra }; store.saveRfq(c); return { ...c, supplierName: store.supplier(c.supplierId)?.name || 'Any supplier' }; };
       const act = (sel, fn) => dlg.querySelector(sel)?.addEventListener('click', () => { try { fn(); } catch (e) { toast(e.message, { kind: 'err' }); } });
       act('[data-print]', () => printRfq(persist()));
@@ -435,7 +499,7 @@ export function openRfq(id) {
     },
     onSubmit: (v, { form }) => {
       const lines = readLines(form).map(({ itemId, name, unit, qty, lastCost, packSize, buyUnit, inPacks: ip }) => ({ itemId, name, unit, qty, lastCost, packSize, buyUnit, inPacks: ip }));
-      store.saveRfq({ ...r, supplierId: v.supplierId, status: v.status, note: v.note, lines });
+      store.saveRfq({ ...r, supplierId: v.supplierId, status: v.status, note: v.note, lines, ...(form.closest('dialog')._layout ? { layout: form.closest('dialog')._layout } : {}) });
       toast('Request saved');
     },
   });
@@ -445,34 +509,40 @@ export function openRfq(id) {
 // ---------- Purchase orders ----------
 export function poText(po) {
   const st = store.settings;
+  const L = layoutFor('po', po);
+  const amt = L.cols.amount === 'fill';
   return [
     `PURCHASE ORDER ${po.no}`,
     `From: ${st.shopName}${st.phone ? ' (' + st.phone + ')' : ''}`,
-    `Date: ${fmtDate(po.ts)} · Deliver by: ${fmtDate(po.expectedTs)}`,
+    `Date: ${fmtDate(po.ts)}${L.parts.dates ? ` · Deliver by: ${fmtDate(po.expectedTs)}` : ''}`,
+    ...(L.parts.address ? [`Deliver to: ${st.shopName}${st.address ? ', ' + st.address : ''}`] : []),
     '',
-    po.note || '',
+    ...(L.parts.note && po.note ? [po.note, ''] : []),
+    ...docTextLines('po', po.lines, L, (l) => num(l.cost)),
     '',
-    ...po.lines.map((l, i) => { const o = asOrdered(l); return `${i + 1}. ${l.name} — ${orderedText(o)}${l.cost ? ` @ ${fmt(o.price)} per ${o.unit} = ${fmt(l.qty * l.cost)}` : ''}`; }),
-    '',
-    `TOTAL: ${fmt(po.total)}`,
+    ...(L.cols.amount !== 'hide' ? [`TOTAL: ${amt ? fmt(po.total) : '______'}`] : []),
+    ...(L.parts.terms ? ['Payment terms: ______'] : []),
   ].join('\n');
 }
 
 export function printPo(po) {
   const st = store.settings;
   const sup = store.supplier(po.supplierId);
+  const L = layoutFor('po', po);
+  const P = docParts('po', L);
+  const big = L.cols.unit === 'fill' && po.lines.some((l) => asOrdered(l).big);
   printHtml(po.no, `
     <div class="head">
       <div><h1>${esc(st.shopName)}</h1><div class="muted">${esc(st.address)}<br>${esc(st.phone)} ${esc(st.email)}${st.tin ? '<br>TIN ' + esc(st.tin) : ''}</div></div>
-      <div style="text-align:right"><h1>Purchase order</h1><div>No. <b>${esc(po.no)}</b><br>Date: ${fmtDate(po.ts)}<br>Deliver by: ${fmtDate(po.expectedTs)}</div></div>
+      <div style="text-align:right"><h1>Purchase order</h1><div>No. <b>${esc(po.no)}</b><br>Date: ${fmtDate(po.ts)}${L.parts.dates ? `<br>Deliver by: ${fmtDate(po.expectedTs)}` : ''}</div></div>
     </div>
     <div class="box"><b>Supplier:</b> ${esc(sup?.name || po.supplierName || '')}<br>${esc([sup?.contact, sup?.phone, sup?.email, sup?.address].filter(Boolean).join(' · '))}</div>
-    <p>${esc(po.note || '')}</p>
-    <table><thead><tr><th>#</th><th>Item</th><th>Unit</th><th class="r">Qty</th><th class="r">Total pieces</th><th class="r">Price per unit</th><th class="r">Amount</th></tr></thead>
-    <tbody>${po.lines.map((l, i) => { const o = asOrdered(l); return `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.sku ? `<br><small class="muted">${esc(l.sku)}</small>` : ''}</td><td>${esc(o.unitLabel)}</td><td class="r">${fmtQty(o.qty)}</td><td class="r">${fmtQty(o.pieces)} ${esc(o.pc)}</td><td class="r">${fmt(o.price)}${o.big ? `<br><small class="muted">${fmt(l.cost)} per ${esc(o.pc === 'pcs' ? 'piece' : o.pc)}</small>` : ''}</td><td class="r">${fmt(l.qty * l.cost)}</td></tr>`; }).join('')}
-    <tr class="tot"><td colspan="6">Total</td><td class="r">${fmt(po.total)}</td></tr></tbody></table>
-    ${po.lines.some((l) => asOrdered(l).big) ? '<p class="muted small">Quantities are in the unit shown (carton, dozen, box…). Total pieces is what we count into stock.</p>' : ''}
-    <div class="sig"><div>Authorised by</div><div>Supplier signature &amp; stamp</div></div>`);
+    ${P.address}
+    ${L.parts.note && po.note ? `<p>${esc(po.note)}</p>` : ''}
+    ${docTable('po', po.lines, L, (l) => num(l.cost))}
+    ${big ? '<p class="muted small">Quantities are in the unit shown (carton, dozen, box…). Total pieces is what we count into stock.</p>' : ''}
+    ${P.terms}
+    ${P.sig}`);
 }
 
 /** Create (id = null) or open a purchase order. */
@@ -488,7 +558,7 @@ export function openPo(id) {
   const canDelete = !!po && store.can('orders') && (!anyReceived || store.can('clear'));
   const lines = po?.lines || [{}, {}];
   // A new order gets its id and number now, so saving, printing and sending never create duplicates.
-  const meta = { id: po?.id || store.backend.newId('pos'), no: po?.no || docNo('PO'), ts: po?.ts || Date.now() };
+  const meta = { id: po?.id || store.backend.newId('pos'), no: po?.no || docNo('PO'), ts: po?.ts || Date.now(), layout: po?.layout || null };
   modal({
     title: po ? po.no : 'New purchase order',
     wide: true,
@@ -513,6 +583,7 @@ export function openPo(id) {
       ${po && po.status === 'partial' ? '<button type="button" class="btn ghost" data-close-short>Close short</button>' : ''}
       <button type="button" class="btn ghost" data-wa>${icon('wa')}<span class="hide-sm">WhatsApp</span></button>
       <button type="button" class="btn ghost" data-mail>${icon('mail')}<span class="hide-sm">Email</span></button>
+      <button type="button" class="btn ghost" data-layout>${icon('orders')}<span class="hide-sm">Columns</span></button>
       <button type="button" class="btn ghost" data-print>${icon('print')}<span class="hide-sm">Print / PDF</span></button>
       ${draft ? '<button type="button" class="btn ghost" data-order>Mark as ordered</button>' : ''}
       ${canReceive ? `<button type="button" class="btn accent" data-recv>${icon('truck')}Receive</button>` : ''}
@@ -527,8 +598,9 @@ export function openPo(id) {
       if (editable) { wireLines(dlg, true, total); total(); }
       const form = dlg.querySelector('form');
       /** Save what is on screen and return the stored version (same id and number every time). */
+      dlg.querySelector('[data-layout]').addEventListener('click', () => openLayoutEditor('po', layoutFor('po', { layout: meta.layout }), (out) => { meta.layout = out; }));
       const persist = (extra = {}) => {
-        const data = { id: meta.id, no: meta.no, ts: meta.ts, status: po?.status, rfqId: po?.rfqId, auto: po?.auto, by: po?.by, orderedAt: po?.orderedAt };
+        const data = { id: meta.id, no: meta.no, ts: meta.ts, status: po?.status, rfqId: po?.rfqId, auto: po?.auto, by: po?.by, orderedAt: po?.orderedAt, layout: meta.layout };
         if (form.expected && !form.expected.disabled) data.expectedTs = fromInputDate(form.expected.value);
         else data.expectedTs = po?.expectedTs;
         if (editable) {
@@ -569,7 +641,7 @@ export function openPo(id) {
       });
     },
     onSubmit: (v, { form }) => {
-      const data = { id: meta.id, no: meta.no, ts: meta.ts, status: po?.status, rfqId: po?.rfqId, auto: po?.auto, by: po?.by, orderedAt: po?.orderedAt, note: v.note ?? po?.note };
+      const data = { id: meta.id, no: meta.no, ts: meta.ts, status: po?.status, rfqId: po?.rfqId, auto: po?.auto, by: po?.by, orderedAt: po?.orderedAt, note: v.note ?? po?.note, layout: meta.layout };
       data.expectedTs = form.expected && !form.expected.disabled ? fromInputDate(form.expected.value) : po?.expectedTs;
       if (editable) {
         data.supplierId = v.supplierId;

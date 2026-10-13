@@ -448,6 +448,7 @@ export const store = {
       by: po.by || this.user?.email || '', ...this._stamp(),
     };
     if (po.orderedAt) data.orderedAt = po.orderedAt;
+    if (po.layout) data.layout = po.layout; // columns chosen for this order's document
     const isNew = !this.data.pos.some((x) => x.id === id);
     return { id, data, isNew };
   },
