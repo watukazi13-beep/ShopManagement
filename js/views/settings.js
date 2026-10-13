@@ -104,7 +104,7 @@ export default {
         <section class="card about">
           <div class="card-head"><h2>About</h2></div>
           <div class="about-row">
-            <img src="brand/app-icon.svg" alt="" width="48" height="48">
+            <img src="brand/book-icon.svg" alt="" width="48" height="48">
             <div><b>${esc(APP_NAME)}</b><small>Version ${esc(VERSION)} · ${store.mode === 'local' ? 'trial mode' : 'synced'}</small></div>
           </div>
           <div class="about-dev">

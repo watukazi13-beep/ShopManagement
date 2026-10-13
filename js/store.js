@@ -817,7 +817,7 @@ export const store = {
     window.dispatchEvent(new CustomEvent('app-alert', { detail: { title, body, link } }));
     try {
       if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-        navigator.serviceWorker?.ready.then((reg) => reg.showNotification(title, { body, icon: 'icons/icon-192.png', tag: body, data: { link } }));
+        navigator.serviceWorker?.ready.then((reg) => reg.showNotification(title, { body, icon: 'icons/book-192.png', tag: body, data: { link } }));
       }
     } catch { /* ignore */ }
   },

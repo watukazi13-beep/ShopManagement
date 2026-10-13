@@ -41,7 +41,7 @@ function gate(title, html) {
       <img class="gate-dev" src="brand/developers-logo-on-dark.svg" alt="">
     </aside>
     <section class="gate-main"><div class="gate-card">
-      <img class="gate-icon" src="brand/app-icon.svg" alt="" width="52" height="52">
+      <img class="gate-icon" src="brand/book-icon.svg" alt="" width="52" height="52">
       <h1>${esc(title)}</h1>${html}
       ${isInstalled() ? '' : `<button type="button" class="link install-link" id="g-install">${icon('download')}Install this app on this device</button>`}
       <div class="credit"><img src="brand/developers-logo.svg" alt="Greenlight Developers" class="credit-logo"><p>${esc(CREDIT)}</p></div>
@@ -163,7 +163,7 @@ function showShell() {
   const links = NAV.filter(([, , , perm]) => !perm || store.can(perm));
   root.innerHTML = `
     <header class="topbar">
-      <a href="#/home" class="brand" id="brand"><img class="brand-icon" src="brand/app-icon.svg" alt="" width="32" height="32"><span class="brand-text"><span id="shop-name"></span><small class="brand-sub">Shop Manager</small></span><span id="shop-caret"></span></a>
+      <a href="#/home" class="brand" id="brand"><img class="brand-icon" src="brand/book-icon.svg" alt="" width="32" height="32"><span class="brand-text"><span id="shop-name"></span><small class="brand-sub">Shop Manager</small></span><span id="shop-caret"></span></a>
       <span class="sync" id="sync" role="status"></span>
       <a href="#/settings" class="icon-btn" aria-label="Settings">${icon('settings')}</a>
     </header>

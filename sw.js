@@ -1,6 +1,6 @@
 // Service worker: makes the app open and work with no internet.
 // Bump VERSION whenever app files change so devices pick up the update.
-const VERSION = 'v20';
+const VERSION = 'v21';
 const CACHE = `shop-${VERSION}`;
 const APP_FILES = [
   './',
@@ -11,12 +11,12 @@ const APP_FILES = [
   './js/config.js',
   './js/brand.js',
   './js/install.js',
-  './brand/app-icon.svg',
+  './brand/book-icon.svg',
   './brand/symbol.svg',
   './brand/symbol-on-dark.svg',
   './brand/developers-logo.svg',
   './brand/developers-logo-on-dark.svg',
-  './icons/apple-touch-icon.png',
+  './icons/book-apple-180.png',
   './js/store.js',
   './js/calc.js',
   './js/ui.js',
@@ -32,8 +32,8 @@ const APP_FILES = [
   './js/views/customers.js',
   './js/views/quotes.js',
   './js/views/setup.js',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
+  './icons/book-192.png',
+  './icons/book-512.png',
 ];
 
 self.addEventListener('install', (e) => {
