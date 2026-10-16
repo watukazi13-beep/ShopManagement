@@ -254,9 +254,35 @@ window.addEventListener('online', () => { store.online = true; store.emit(); });
 window.addEventListener('offline', () => { store.online = false; store.emit(); });
 window.addEventListener('app-alert', (e) => toast(`${e.detail.title}: ${e.detail.body}`, { kind: 'warn', link: e.detail.link, ms: 5000 }));
 
+// ---------- New versions ----------
+/**
+ * The app checks for a new version when it opens, when you come back to it and every 30 minutes.
+ * When one has been downloaded it switches over by itself — unless you are in the middle of something
+ * (a form or dialog open), then the message offers "Update now".
+ */
+function setupUpdates() {
+  const hadOld = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  const busy = () => !!document.querySelector('dialog[open]') || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+  const reload = () => { if (reloading) return; reloading = true; location.reload(); };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadOld) return; // first install: this page is already the newest
+    if (!busy()) { toast('Updating to the new version…'); setTimeout(reload, 600); return; }
+    toast('A new version of the app is ready', { ms: 60000, action: { label: 'Update now', fn: reload, ms: 60000 } });
+    const later = () => { if (!busy()) reload(); };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') later(); });
+  });
+  navigator.serviceWorker.register('./sw.js').then((reg) => {
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    window.addEventListener('online', check);
+    setInterval(check, 30 * 60 * 1000);
+  }).catch((e) => console.warn('SW', e));
+}
+
 // ---------- Start ----------
 async function boot() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW', e));
+  if ('serviceWorker' in navigator) setupUpdates();
 
   let cfg = firebaseConfig?.apiKey ? firebaseConfig : null;
   if (!cfg) { try { cfg = JSON.parse(localStorage.getItem('firebase-config') || 'null'); } catch { cfg = null; } }
