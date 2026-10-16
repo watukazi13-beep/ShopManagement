@@ -1,7 +1,7 @@
 // App state + every action that changes data.
 import {
   DAY, monthLabel, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
-  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing, unitPrice, inPacks,
+  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing, unitPrice, inPacks, lineAmount, normUnit, normName,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -413,8 +413,27 @@ export const store = {
   _poLines(lines) {
     const merged = new Map();
     for (const l of lines) {
-      if (!l.itemId || num(l.qty) <= 0) continue;
+      if (!l.itemId) continue;
       const it = this.item(l.itemId) || {};
+      if (l.ordUnit) {
+        // A line in the supplier's unit (e.g. "1 carton" from an imported order). Pieces per unit may be
+        // unknown until the goods arrive (perOk false); qty/cost in pieces then use 1 as a placeholder.
+        if (num(l.ordQty) <= 0) continue;
+        const key = `${l.itemId}|${l.ordUnit}`;
+        const per = num(l.packSize) > 0 ? num(l.packSize) : 1;
+        const m = merged.get(key) || {
+          itemId: l.itemId, name: it.name || l.name, sku: it.sku || '', unit: it.unit || l.unit || 'pcs',
+          ordUnit: l.ordUnit, ordQty: 0, ordPrice: unitPrice(l.ordPrice), perOk: !!l.perOk, packSize: per, buyUnit: l.ordUnit,
+          srcName: l.srcName || '', received: num(l.received), receivedUnits: num(l.receivedUnits), inPacks: l.ordUnit !== 'pcs',
+        };
+        m.ordQty += num(l.ordQty);
+        if (num(l.ordPrice)) m.ordPrice = unitPrice(l.ordPrice);
+        m.qty = Math.round(m.ordQty * per * 1000) / 1000;
+        m.cost = unitPrice(m.ordPrice / per);
+        merged.set(key, m);
+        continue;
+      }
+      if (num(l.qty) <= 0) continue;
       // Buying unit is copied onto the line, so the order still reads "2 cartons" if the item changes later.
       const m = merged.get(l.itemId) || {
         itemId: l.itemId, name: it.name || l.name, sku: it.sku || '', unit: it.unit || l.unit || 'pcs', qty: 0, cost: unitPrice(l.cost), received: num(l.received),
@@ -424,7 +443,51 @@ export const store = {
       if (num(l.cost)) m.cost = unitPrice(l.cost);
       merged.set(l.itemId, m);
     }
-    return [...merged.values()].map(({ _inPacks, ...m }) => ({ ...m, inPacks: inPacks({ ...m, inPacks: _inPacks }) }));
+    return [...merged.values()].map(({ _inPacks, ...m }) => (m.ordUnit ? m : { ...m, inPacks: inPacks({ ...m, inPacks: _inPacks }) }));
+  },
+  /**
+   * Turn a supplier's order file into a draft purchase order.
+   * lines: [{ name, qty, unit, per, unitPrice, itemId | null, create, skip }]; new items are created first.
+   * The supplier's names are remembered so the next file matches them straight away.
+   */
+  importOrder({ supplierId = '', lines, note = '' }) {
+    const ops = [];
+    const aliases = { ...(this.settings.orderAliases || {}) };
+    const supKey = supplierId || 'any';
+    const mine = { ...(aliases[supKey] || {}) };
+    const poLines = [];
+    for (const l of lines) {
+      if (l.skip || l.unavailable) continue;
+      let itemId = l.itemId;
+      const unit = l.unit || 'unit';
+      if (!itemId && l.create) {
+        itemId = this.backend.newId('items');
+        const per = num(l.per) > 1 ? num(l.per) : 1;
+        ops.push({
+          type: 'set', col: 'items', id: itemId,
+          data: {
+            name: l.name.trim(), sku: '', barcode: '', category: '', unit: 'pcs', price: 0, variablePrice: true,
+            cost: unitPrice(l.unitPrice / per), lastCost: unitPrice(l.unitPrice / per), minStock: 0, maxStock: 0,
+            packSize: per, buyUnit: per > 1 ? unit : '', supplierId, service: false, active: true, stock: 0,
+            createdAt: Date.now(), ...this._stamp(),
+          },
+        });
+      }
+      if (!itemId) continue;
+      const it = this.item(itemId) || {};
+      let per = num(l.per) || 0;
+      if (!per && normUnit(it.buyUnit) === normUnit(unit) && num(it.packSize) > 1) per = num(it.packSize);
+      poLines.push({
+        itemId, name: it.name || l.name, ordQty: num(l.qty), ordUnit: unit, ordPrice: l.unitPrice,
+        packSize: per || 0, perOk: per > 0, srcName: l.name,
+      });
+      mine[normName(l.name)] = itemId;
+    }
+    if (!poLines.length) throw new Error('No lines to order — match or create at least one item');
+    aliases[supKey] = mine;
+    ops.push({ type: 'merge', col: 'meta', id: 'settings', data: { orderAliases: aliases, ...this._stamp() } });
+    this.backend.write(ops);
+    return this.savePo({ supplierId, lines: poLines, note: note || this.settings.poNote || '', imported: true });
   },
   /** Create (no id) or update a purchase order. Returns its id. */
   savePo(po) {
@@ -443,7 +506,7 @@ export const store = {
       supplierId: po.supplierId || '', supplierName: sup?.name || po.supplierName || 'Any supplier',
       expectedTs: num(po.expectedTs) || ts + num(this.settings.leadDays || 7) * DAY,
       status: po.status || 'draft', lines,
-      total: money(lines.reduce((t, l) => t + l.qty * l.cost, 0)),
+      total: money(lines.reduce((t, l) => t + lineAmount(l), 0)),
       note: po.note ?? this.settings.poNote ?? '', rfqId: po.rfqId || '', auto: !!po.auto,
       by: po.by || this.user?.email || '', ...this._stamp(),
     };
@@ -517,26 +580,46 @@ export const store = {
    * unless closeShort is set.
    */
   receivePo(po, receipts, { ts = Date.now(), ref = '', paid = false, closeShort = false, note = '' } = {}) {
-    const got = new Map(receipts.filter((r) => num(r.qty) > 0).map((r) => [r.itemId, r]));
+    // receipts: [{ idx (line number), qty (pieces), cost (per piece), units?, per? (pieces in one unit), remember? }]
+    // Older callers may pass { itemId, qty, cost } — matched to the first line of that item.
+    const got = new Map();
+    for (const r of receipts) {
+      if (!(num(r.qty) > 0)) continue;
+      const idx = r.idx ?? po.lines.findIndex((l) => l.itemId === r.itemId);
+      if (idx >= 0) got.set(idx, r);
+    }
     if (!got.size && !closeShort) throw new Error('Enter how many of each item arrived');
-    const lines = po.lines.map((l) => {
-      const r = got.get(l.itemId);
-      return r ? { ...l, received: num(l.received) + num(r.qty), cost: money(r.cost || l.cost) } : l;
+    const remember = [];
+    const lines = po.lines.map((l, i) => {
+      const r = got.get(i);
+      if (!r) return l;
+      const out = { ...l, received: Math.round((num(l.received) + num(r.qty)) * 1000) / 1000, cost: unitPrice(r.cost || l.cost) };
+      if (l.ordUnit) {
+        const per = num(r.per) || num(l.packSize) || 1;
+        out.receivedUnits = Math.round((num(l.receivedUnits) + num(r.units ?? num(r.qty) / per)) * 1000) / 1000;
+        out.packSize = per; out.perOk = true;
+        out.qty = Math.round(num(l.ordQty) * per * 1000) / 1000;
+        out.ordPrice = unitPrice(out.cost * per);
+      }
+      if (r.remember && num(r.per) > 1 && this.can('editItems')) remember.push({ itemId: l.itemId, buyUnit: l.ordUnit || l.buyUnit || 'pack', packSize: num(r.per) });
+      return out;
     });
-    const complete = lines.every((l) => num(l.received) >= num(l.qty));
+    const complete = lines.every((l) => num(l.received) >= num(l.qty) - 1e-6);
     const status = complete || closeShort ? 'received' : 'partial';
     const poOp = {
       type: 'merge', col: 'pos', id: po.id,
       data: { lines, status, closedShort: !complete && closeShort, ...(status === 'received' ? { receivedAt: Date.now() } : {}), ...this._stamp() },
     };
+    const itemOps = remember.map((x) => ({ type: 'merge', col: 'items', id: x.itemId, data: { buyUnit: x.buyUnit, packSize: x.packSize, ...this._stamp() } }));
     if (!got.size) { this.backend.write([poOp]); return null; }
     return this.receivePurchase({
       supplierId: po.supplierId, ref, ts, paid, note, poId: po.id, poNo: po.no,
-      lines: [...got.values()].map((r) => {
-        const l = po.lines.find((x) => x.itemId === r.itemId) || {};
-        return { itemId: r.itemId, qty: num(r.qty), cost: num(r.cost), packSize: l.packSize, buyUnit: l.buyUnit, inPacks: r.inPacks ?? l.inPacks };
+      lines: [...got.entries()].map(([i, r]) => {
+        const l = po.lines[i];
+        const per = num(r.per) || num(l.packSize) || 1;
+        return { itemId: l.itemId, qty: num(r.qty), cost: num(r.cost), packSize: per, buyUnit: l.ordUnit || l.buyUnit, inPacks: r.inPacks ?? (per > 1) };
       }),
-      extraOps: [poOp],
+      extraOps: [poOp, ...itemOps],
     });
   },
   markPurchasePaid(p, paid) {

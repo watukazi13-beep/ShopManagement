@@ -96,7 +96,9 @@ export default {
         const left = po.lines.filter((l) => num(l.received) < num(l.qty));
         return `<li class="row ${canRecv ? 'tap' : ''}" data-incoming="${po.id}">
           <div class="grow"><b>${esc(po.supplierName || 'Any supplier')}</b>
-            <small>${esc(po.no)} · expected ${fmtDate(po.expectedTs)} · ${left.map((l) => `${esc(l.name)} ${esc(orderQtyText(num(l.qty) - num(l.received), packInfo(l, store.item(l.itemId)), l.unit).replace(/ \(.*\)$/, ''))}`).slice(0, 3).join(', ')}${left.length > 3 ? ` +${left.length - 3} more` : ''}</small></div>
+            <small>${esc(po.no)} · expected ${fmtDate(po.expectedTs)} · ${left.map((l) => (l.ordUnit
+              ? `${esc(l.name)} ${fmtQty(Math.max(0, num(l.ordQty) - num(l.receivedUnits)))} ${esc(plural(l.ordUnit === 'pcs' ? l.unit || 'pcs' : l.ordUnit, num(l.ordQty) - num(l.receivedUnits)))}`
+              : `${esc(l.name)} ${esc(orderQtyText(num(l.qty) - num(l.received), packInfo(l, store.item(l.itemId)), l.unit).replace(/ \(.*\)$/, ''))}`)).slice(0, 3).join(', ')}${left.length > 3 ? ` +${left.length - 3} more` : ''}</small></div>
           ${isLate(po) ? '<span class="pill bad">Late</span>' : po.status === 'partial' ? '<span class="pill warn">Partly received</span>' : '<span class="pill info">Ordered</span>'}
           ${canRecv ? `<button type="button" class="btn primary small" data-recv="${po.id}">Receive</button>` : ''}
         </li>`;

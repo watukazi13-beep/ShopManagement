@@ -445,3 +445,137 @@ export function packsText(qty, item = {}) {
   const rest = Math.round((q - whole * per) * 1000) / 1000;
   return `${whole ? `${whole} ${plural(name, whole)} of ${per}` : ''}${whole && rest ? ' + ' : ''}${rest ? `${rest} ${item.unit || 'pcs'}` : ''}`;
 }
+
+// ---------- Importing a supplier's order / price list ----------
+const UNIT_ALIASES = {
+  pc: 'pcs', pcs: 'pcs', piece: 'pcs', pieces: 'pcs', pce: 'pcs', each: 'pcs', ea: 'pcs',
+  doz: 'dozen', dz: 'dozen', dozen: 'dozen', dozens: 'dozen',
+  ctn: 'carton', ctns: 'carton', carton: 'carton', cartons: 'carton',
+  pkt: 'packet', pkts: 'packet', packet: 'packet', packets: 'packet', pack: 'pack', packs: 'pack',
+  box: 'box', boxes: 'box', bx: 'box', ream: 'ream', reams: 'ream', rim: 'ream',
+  outer: 'outer', outers: 'outer', kopo: 'kopo', tin: 'tin', bundle: 'bundle', bag: 'bag', roll: 'roll', set: 'set', sets: 'set',
+};
+/** "carton", "Ctn", "pc" → a standard unit name ("" when none). */
+export function normUnit(u) {
+  const k = String(u || '').trim().toLowerCase().replace(/[.\s]+$/, '');
+  return UNIT_ALIASES[k] || k;
+}
+/**
+ * A quantity as suppliers write it: "1 dozen", "50 pcs", "1 dozen (50 pcs)", "2", "" (= 1).
+ * Returns { qty, unit, per } — per = pieces in one unit when the text says so — or null
+ * when it is not a quantity at all (e.g. "Hizi sina" = not available).
+ */
+export function parseOrderQty(text) {
+  const t = String(text ?? '').trim();
+  if (!t) return { qty: 1, unit: '', per: null, blank: true };
+  const m = t.match(/^(\d+(?:[.,]\d+)?)\s*([a-zA-Z/]*)\.?\s*(?:\(\s*(\d+(?:\.\d+)?)\s*([a-zA-Z]*)\s*\))?\s*$/);
+  if (!m) return null;
+  const qty = num(m[1].replace(',', '.'));
+  let unit = normUnit(m[2]);
+  let per = m[3] ? num(m[3]) : null;
+  if (unit === 'pcs') per = 1;
+  if (unit === 'dozen' && !per) per = 12;
+  return { qty, unit, per };
+}
+
+/** Find the column that matches any of the patterns (headers are compared lower-case). */
+function findCol(header, ...res) {
+  const h = header.map((x) => String(x || '').trim().toLowerCase());
+  for (const re of res) { const i = h.findIndex((x) => re.test(x)); if (i >= 0) return i; }
+  return -1;
+}
+/**
+ * Rows of a supplier order (first row = headers) → lines with quantity, unit and prices.
+ * The "Price" column is the amount for that line (it adds up to the TOTAL row); a "Unit price"
+ * column, when present, is used as the price per unit instead.
+ */
+export function parseOrderRows(rows) {
+  if (!rows.length) throw new Error('The file is empty');
+  const head = rows[0];
+  const c = {
+    name: findCol(head, /^item/, /^name/, /^description/, /^product/, /^bidhaa/, /^jina/),
+    qty: findCol(head, /^quantity/, /^qty/, /^idadi/, /^kiasi/),
+    unitPrice: findCol(head, /^unit price/, /^price per/, /^price each/, /^bei ya kimoja/, /^rate/),
+    amount: findCol(head, /^amount/, /^total/, /^price/, /^bei/, /^cost/),
+  };
+  if (c.amount === c.unitPrice) c.amount = -1;
+  if (c.name < 0) throw new Error('Could not find an “Item” column in this file');
+  const lines = [];
+  let fileTotal = null;
+  for (const r of rows.slice(1)) {
+    const name = String(r[c.name] ?? '').trim();
+    const cells = r.map((x) => String(x ?? '').trim()).join(' ');
+    if (/^(grand\s*)?total/i.test(name) || (!name && /total/i.test(cells))) {
+      const v = num(String(r[c.amount] ?? '').replace(/,/g, ''));
+      if (v) fileTotal = v;
+      continue;
+    }
+    if (!name) continue;
+    const qtyText = c.qty >= 0 ? String(r[c.qty] ?? '').trim() : '';
+    const amountText = c.amount >= 0 ? String(r[c.amount] ?? '').replace(/,/g, '').trim() : '';
+    const unitText = c.unitPrice >= 0 ? String(r[c.unitPrice] ?? '').replace(/,/g, '').trim() : '';
+    const q = parseOrderQty(qtyText);
+    if (!q || (amountText === '' && unitText === '')) {
+      lines.push({ name, qtyText, unavailable: true, reason: q ? 'No price' : qtyText || 'No quantity' });
+      continue;
+    }
+    const unitPriceV = unitText !== '' ? num(unitText) : num(amountText) / (q.qty || 1);
+    const amount = amountText !== '' ? num(amountText) : unitPriceV * q.qty;
+    lines.push({ name, qtyText, qty: q.qty, unit: q.unit, per: q.per, unitPrice: unitPrice(unitPriceV), amount: money(amount) });
+  }
+  const sum = money(lines.filter((l) => !l.unavailable).reduce((t, l) => t + l.amount, 0));
+  return { lines, fileTotal, sum };
+}
+
+// Supplier names vs your item names: "Quire Two" ~ "Counter Book Q2", "Chongeo" ~ "Vichongeo".
+const NAME_SWAPS = [
+  [/\bquire\s*(one|1)\b/g, 'q1'], [/\bquire\s*(two|2)\b/g, 'q2'], [/\bquire\s*(three|3)\b/g, 'q3'], [/\bquire\s*(four|4)\b/g, 'q4'],
+  [/\bcounter\s*book\b/g, ''], [/\bcounter\b/g, ''], [/\bmaths?\b/g, 'mathematical'], [/\bw\/book\b/g, 'notebook'],
+  [/\bpg\b/g, 'page'], [/\bpages?\b/g, 'page'], [/\bpage\s*(\d+)/g, 'p$1'], [/\bsellotape\b|\bcellotape\b|\bsole\s*tape\b/g, 'sellotape'], [/\bpaper one\b/g, 'a one'],
+  [/\bvi(?=[a-z]{4,})/g, ''], [/\bkubwa\b/g, 'big'], [/\bndogo\b/g, 'small'], [/\bya\b|\bza\b|\bwa\b|\bla\b|\bthe\b|\bof\b/g, ''],
+];
+export function normName(s) {
+  let t = String(s || '').toLowerCase().replace(/[()|,.;:_\-+*]/g, ' ');
+  for (const [re, to] of NAME_SWAPS) t = t.replace(re, to);
+  return t.replace(/\s+/g, ' ').trim();
+}
+const bigrams = (s) => { const t = ` ${s} `; const out = []; for (let i = 0; i < t.length - 1; i++) out.push(t.slice(i, i + 2)); return out; };
+/** 0..1 — how alike two item names are (letter pairs + whole words). */
+export function nameScore(a, b) {
+  const x = normName(a), y = normName(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  const A = bigrams(x), B = bigrams(y);
+  const pool = [...B]; let hit = 0;
+  for (const g of A) { const k = pool.indexOf(g); if (k >= 0) { hit++; pool.splice(k, 1); } }
+  const dice = (2 * hit) / (A.length + B.length);
+  const stem = (w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w);
+  const wa = new Set(x.split(' ').map(stem)), wb = new Set(y.split(' ').map(stem));
+  const common = [...wa].filter((w) => wb.has(w)).length;
+  const words = common / Math.max(1, Math.max(wa.size, wb.size));
+  let score = Math.max(dice, 0.5 * dice + 0.5 * (common / Math.max(1, Math.min(wa.size, wb.size))) * (0.5 + 0.5 * words));
+  // Sizes must agree: A4 is not A5, Q2 is not Q3, big is not small.
+  const isSize = (w) => /^(a\d|q\d|p\d+|\d+x\d+|\d+mm|big|small)$/.test(w);
+  const sa = [...wa].filter(isSize), sb = [...wb].filter(isSize);
+  const ka = [...wa].filter((w) => !isSize(w)), kb = [...wb].filter((w) => !isSize(w));
+  const keyCommon = ka.filter((w) => kb.includes(w)).length;
+  // Every real word of the shorter name is in the longer one: a strong match ("Graph Pad" → "Graph pad A4").
+  const [short, long] = ka.length <= kb.length ? [ka, kb] : [kb, ka];
+  if (short.length && short.every((w) => long.includes(w))) score = Math.max(score, 0.75 + 0.25 * (short.length / long.length));
+  const sizeAgree = sa.length && sb.length && sa.some((w) => sb.includes(w));
+  if (!keyCommon && !(sizeAgree && (!ka.length || !kb.length))) score *= 0.6; // only sizes or nothing in common
+  score += 0.01 * keyCommon; // more shared words wins a tie ("Colour Pencil" → "Colour pencils", not "Pencil")
+  if (sa.length && sb.length && !sa.some((w) => sb.includes(w))) score *= 0.4;
+  return Math.min(1, score);
+}
+/** Best matching item for a supplier's name, or null when nothing is close enough. */
+export function bestItemMatch(name, items, min = 0.55) {
+  let best = null, score = 0;
+  for (const it of items) { const s = nameScore(name, it.name); if (s > score) { score = s; best = it; } }
+  return score >= min ? { item: best, score } : null;
+}
+
+/** Money for one order line: supplier units × price per unit, or pieces × cost per piece. */
+export function lineAmount(l) {
+  return l.ordUnit ? num(l.ordQty) * num(l.ordPrice) : num(l.qty) * num(l.cost);
+}

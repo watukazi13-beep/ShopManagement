@@ -404,7 +404,7 @@ with sync_playwright() as p:
     go('#/stock'); pg.click('[data-f=incoming]'); pg.wait_for_timeout(200)
     check(pg.locator('[data-incoming]').count() >= 1, 'Incoming tab lists the ordered PO')
     pg.locator('[data-incoming]', has_text=chalk_po['no']).locator('[data-recv]').click(); pg.wait_for_timeout(250)
-    r = dlg().locator('tr[data-item]', has_text='Chalk')
+    r = dlg().locator('tr[data-idx]', has_text='Chalk')
     check(r.locator('.rv-qty').input_value() == '238', 'receive form is filled with the quantity to come')
     r.locator('.rv-qty').fill('200'); r.locator('.rv-cost').fill('12')
     check(dlg().locator('#rv-short-wrap').is_visible(), 'short delivery offers to close the order')
@@ -666,12 +666,10 @@ with sync_playwright() as p:
     go('#/stock'); pg.click('[data-f=incoming]'); pg.wait_for_timeout(200)
     check('2 boxes' in pg.locator('[data-incoming]', has_text=soap_po['no']).inner_text(), 'Incoming shows Bar soap 2 boxes')
     pg.locator('[data-incoming]', has_text=soap_po['no']).locator('[data-recv]').click(); pg.wait_for_timeout(250)
-    tr = dlg().locator('tr[data-item]', has_text='Bar soap')
-    check(tr.locator('.rv-qty').input_value() == '2' and tr.locator('.rv-unit').input_value() == '24', 'receive form counts 2 boxes')
+    tr = dlg().locator('tr[data-idx]', has_text='Bar soap')
+    check(tr.locator('.rv-qty').input_value() == '2' and tr.locator('.rv-per').input_value() == '24', 'receive form counts 2 boxes of 24')
+    check('48 pcs' in tr.locator('.rv-pcs').inner_text(), 'and shows = 48 pcs into stock')
     pg.screenshot(path=OUT + 'receive-units.png')
-    tr.locator('.rv-unit').select_option('1'); pg.wait_for_timeout(100)
-    check(tr.locator('.rv-qty').input_value() == '48', 'switching to pieces shows 48')
-    tr.locator('.rv-unit').select_option('24'); pg.wait_for_timeout(100)
     submit('Receive into stock'); pg.wait_for_timeout(400)
     check(item(pg, 'Bar soap')['stock'] == soap0 + 48, f"receiving 2 boxes adds 48 pieces to stock ({soap0} + 48)")
     check(item(pg, 'Pens blue')['stock'] == 60, 'receiving 5 dozen pens adds 60 pens')
@@ -699,6 +697,58 @@ with sync_playwright() as p:
     check({i['name']: i['stock'] for i in data(pg)['items'].values()} == stock_before, 'clearing losses leaves stock as it is')
     go('#/money?tab=report')
     check('Stock losses' in pg.locator('#money-body').inner_text(), 'profit report still opens after clearing')
+    # --- Import an order from a supplier's file; pieces per carton filled in on arrival
+    before = {n: item(pg, n)['stock'] for n in ('Chalk', 'Bar soap', 'Pens blue', 'Sugar 1kg')}
+    order_csv = ('No,Item,Quantity,Price (TSh)\n'
+                 '1,Chalk,1 carton,27000\n'
+                 '2,Bar Soap,2 box,48000\n'
+                 '3,Blue Pens,1 dozen,2400\n'
+                 '4,Sugar 1kg,10 pcs,32000\n'
+                 '5,Sugar 1kg,1 bag (25 pcs),75000\n'
+                 '6,Battery AAA,Hizi sina,\n'
+                 '7,Highlighter,1 dozen,8000\n'
+                 ',TOTAL,,192400\n')
+    go('#/orders?tab=pos'); pg.click('[data-act=import-po]'); pg.wait_for_timeout(250)
+    dlg().locator('input[type=file]').set_input_files(files=[{'name': 'order.csv', 'mimeType': 'text/csv', 'buffer': order_csv.encode()}])
+    pg.wait_for_timeout(400)
+    io = dlg().locator('#io-body').inner_text()
+    check('192,400' in io and 'matches the file total' in io and '1 not available' in io, 'order file read: total matches, Battery AAA not available')
+    picks = {dlg().locator('.io-line[data-i]').nth(i).locator('.io-src b').inner_text(): dlg().locator('.io-line[data-i]').nth(i).locator('.io-pick option:checked').inner_text() for i in range(dlg().locator('.io-line[data-i]').count())}
+    print('   picks:', picks)
+    check(picks.get('Chalk') == 'Chalk' and picks.get('Bar Soap') == 'Bar soap' and picks.get('Blue Pens') == 'Pens blue' and 'Create new item' in picks.get('Highlighter', ''), 'lines matched to your items; Highlighter offered as a new item')
+    pg.screenshot(path=OUT + 'import-order.png')
+    submit('Create draft order'); pg.wait_for_timeout(500)
+    ipo = next(p for p in pos_() if p.get('imported') or any(l.get('srcName') == 'Bar Soap' for l in p['lines']))
+    check(len(ipo['lines']) == 6 and ipo['total'] == 192400 and ipo['status'] == 'draft', f"draft order: 6 lines (sugar twice), total {ipo['total']:,}")
+    hl = item(pg, 'Highlighter')
+    check(hl['buyUnit'] == 'dozen' and hl['packSize'] == 12 and hl['variablePrice'] is True, 'new item created, bought by the dozen')
+    check('Blue Pens' in json.dumps(data(pg)['meta']['settings'].get('orderAliases', {})) or 'blue pens' in json.dumps(data(pg)['meta']['settings'].get('orderAliases', {})), 'supplier names remembered for next time')
+    dlg().locator('[data-print]').click(); pg.wait_for_timeout(300)
+    ptxt = pg.locator('#print-root .doc').inner_text()
+    check('Carton' in ptxt and '27,000' in ptxt and '192,400' in ptxt, 'purchase order shows 1 carton of chalk at 27,000 and the total')
+    pg.locator('[data-doc-close]').click(); pg.wait_for_timeout(150)
+    dlg().locator('[data-order]').click(); pg.wait_for_timeout(300)
+    go('#/stock'); pg.click('[data-f=incoming]'); pg.wait_for_timeout(200)
+    check('Chalk 1 carton' in pg.locator('[data-incoming]', has_text=ipo['no']).inner_text(), 'Incoming shows Chalk 1 carton')
+    pg.locator('[data-incoming]', has_text=ipo['no']).locator('[data-recv]').click(); pg.wait_for_timeout(300)
+    rc = dlg().locator('tr[data-idx]', has_text='Chalk')
+    check(rc.locator('.rv-per').input_value() == '' and dlg().locator('tr[data-idx]', has_text='Bar soap').locator('.rv-per').input_value() == '24', 'pieces per carton empty for chalk, known for soap (24 per box)')
+    submit('Receive into stock'); pg.wait_for_timeout(300)
+    check(dlg().count() == 1 and 'pieces' in pg.locator('.toast').last.inner_text(), 'receiving asks for the pieces in one carton first')
+    rc.locator('.rv-per').fill('100'); rc.locator('.rv-per').dispatch_event('input')
+    check('100 pcs' in rc.locator('.rv-pcs').inner_text(), 'shows = 100 pcs into stock')
+    pg.screenshot(path=OUT + 'receive-import.png')
+    submit('Receive into stock'); pg.wait_for_timeout(500)
+    after = {n: item(pg, n)['stock'] for n in before}
+    check(after['Chalk'] == before['Chalk'] + 100 and after['Bar soap'] == before['Bar soap'] + 48 and after['Pens blue'] == before['Pens blue'] + 12 and after['Sugar 1kg'] == before['Sugar 1kg'] + 35,
+          f"stock: chalk +100, soap +48, pens +12, sugar +10 +25 ({before} -> {after})")
+    check(item(pg, 'Highlighter')['stock'] == 12, 'new item: 1 dozen highlighters = 12')
+    ch = item(pg, 'Chalk')
+    check(ch['buyUnit'] == 'carton' and ch['packSize'] == 100 and abs(ch['lastCost'] - 270) < 0.01, 'chalk now remembered as carton of 100 at TSh 270 each')
+    ipo = next(p for p in pos_() if p['no'] == ipo['no'])
+    check(ipo['status'] == 'received', 'imported order fully received')
+    pg.click('[data-f=all]')
+
 
     # --- Dashboard: money position on Home
     go('#/home')

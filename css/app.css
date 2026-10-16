@@ -908,3 +908,26 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 .lay-row[data-custom] { flex-wrap: nowrap; }
 .lay-row[data-custom] .lay-title { min-width: 0; flex: 1 1 auto; }
 @media (max-width: 480px) { .lay-row[data-custom] .seg.mini label { padding: 6px 5px; } }
+
+/* ---------- Import an order from a file ---------- */
+.io-sum { margin: 12px 0 10px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--green-2); font-size: .88rem; }
+.io-sum.warn { background: var(--warn-2); }
+.io-list { display: grid; gap: 0; max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.io-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.io-line:last-child { border-bottom: 0; }
+.io-line.io-off { opacity: .6; }
+.io-src b { display: block; font-size: .9rem; }
+.io-src small { color: var(--muted); font-size: .76rem; }
+.io-pick { width: 100%; min-height: 38px; padding: 6px 8px; font-size: .86rem; }
+@media (max-width: 560px) { .io-line { grid-template-columns: 1fr auto; } .io-pick { grid-column: 1 / -1; grid-row: 2; } }
+/* receiving: pieces in one unit */
+.recv-table .rv-per-l { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 4px; font-size: .72rem; color: var(--muted); white-space: nowrap; }
+.recv-table .rv-per { width: 58px; min-height: 32px; padding: 4px 6px; text-align: right; }
+.recv-table .rv-per.need { border-color: var(--warn); background: var(--warn-2); }
+.recv-table .rv-rem { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 2px; font-size: .72rem; color: var(--muted); }
+.recv-table .rv-rem input { width: auto; min-height: 0; }
+.recv-table .rv-per-l { display: grid; justify-items: end; gap: 2px; white-space: normal; text-align: right; line-height: 1.2; }
+.recv-table .rv-per { width: 100%; max-width: 90px; }
+.recv-table td:first-child { overflow-wrap: anywhere; }
+.recv-table td:nth-child(2) small { font-size: .68rem; white-space: nowrap; }
+@media (max-width: 639px) { .recv-table th:nth-child(2), .recv-table td:nth-child(2) { width: 60px; padding-left: 2px; padding-right: 4px; } }

@@ -208,3 +208,37 @@ assert.equal(orderQtyText(5, null), '5 pcs');
 assert.equal(packRule({ unit: 'dozen', per: 12 }, 'pens'), '1 dozen = 12 pens');
 assert.equal(Math.round(unitPrice(1000 / 24) * 24), 1000, 'carton price divided and multiplied back stays the same');
 console.log('Buying unit tests passed');
+
+// Importing a supplier's order
+import { parseOrderQty, parseOrderRows, bestItemMatch, lineAmount } from '../js/calc.js';
+assert.deepEqual(parseOrderQty('1 dozen'), { qty: 1, unit: 'dozen', per: 12 });
+assert.deepEqual(parseOrderQty('50 pcs'), { qty: 50, unit: 'pcs', per: 1 });
+assert.deepEqual(parseOrderQty('1 dozen (50 pcs)'), { qty: 1, unit: 'dozen', per: 50 });
+assert.deepEqual(parseOrderQty('1 carton'), { qty: 1, unit: 'carton', per: null });
+assert.deepEqual(parseOrderQty('2 Pkt'), { qty: 2, unit: 'packet', per: null });
+assert.equal(parseOrderQty('Hizi sina'), null, 'not a quantity = not available');
+assert.equal(parseOrderQty('').blank, true);
+const ord = parseOrderRows([
+  ['No', 'Item', 'Quantity', 'Price (TSh)'],
+  ['1', 'Chalk', '1 carton', '27000'],
+  ['2', 'Bahasha A4', '50 pcs', '4000'],
+  ['3', 'Battery AAA', 'Hizi sina', ''],
+  ['4', 'Spiral Binding 10mm', '', '10000'],
+  ['', 'TOTAL', '', '41000'],
+]);
+assert.equal(ord.lines.length, 4);
+assert.equal(ord.fileTotal, 41000);
+assert.equal(ord.sum, 41000, 'lines add up to the file total');
+assert.equal(ord.lines[1].unitPrice, 80, 'price is the amount for the quantity: 4000 / 50 pcs = 80 each');
+assert.equal(ord.lines[2].unavailable, true);
+assert.equal(ord.lines[3].qty, 1, 'blank quantity = 1');
+const shopItems = ['Counter Book Q2', 'Counter Book Q3', 'Bahasha A4', 'Vichongeo', 'Colour pencils (pack of 12)', 'Pencil', 'Sole tape Ndogo', 'Masking tape 1"'].map((name, i) => ({ id: String(i), name }));
+assert.equal(bestItemMatch('Quire Two', shopItems).item.name, 'Counter Book Q2');
+assert.equal(bestItemMatch('Quire Three', shopItems).item.name, 'Counter Book Q3');
+assert.equal(bestItemMatch('Chongeo', shopItems).item.name, 'Vichongeo');
+assert.equal(bestItemMatch('Colour Pencil Ndogo', shopItems).item.name, 'Colour pencils (pack of 12)');
+assert.equal(bestItemMatch('Sellotape Ndogo', shopItems).item.name, 'Sole tape Ndogo');
+assert.equal(bestItemMatch('Bahasha A5', shopItems), null, 'A5 is not A4');
+assert.equal(bestItemMatch('Sellotape Big', shopItems), null, 'big is not small, and not masking tape');
+assert.equal(lineAmount({ ordUnit: 'carton', ordQty: 2, ordPrice: 27000 }), 54000);
+console.log('Order import tests passed');
