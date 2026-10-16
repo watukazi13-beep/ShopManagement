@@ -5,6 +5,7 @@ import { esc, icon, toast, modal } from './ui.js';
 import { MAKER, AUTHOR, CREDIT, bookLoader } from './brand.js';
 import { installApp, isInstalled } from './install.js';
 import { applyTheme, shownTheme, toggleTheme } from './theme.js';
+import { offerUndo } from './views/changes.js';
 
 applyTheme();
 import home from './views/home.js';
@@ -230,6 +231,9 @@ function route() {
   el.scrollTop = 0;
   window.scrollTo(0, 0);
 }
+
+// Right after an import, delivery, count or deletion, the message offers "Undo".
+window.addEventListener('shop:change', (e) => { if (shell) offerUndo(e.detail); });
 
 let frame = 0;
 store.subscribe(() => {

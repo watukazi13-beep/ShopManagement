@@ -40,6 +40,8 @@ export const DEFAULT_SETTINGS = {
 
 const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments', 'shifts'];
 const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers', 'closings', 'quotes'];
+const CHANGES_DAYS = 60; // change history (with Undo) kept on screen for this many days
+const STAMP_FIELDS = new Set(['updatedAt', 'updatedBy']);
 
 export const store = {
   backend: null,
@@ -55,7 +57,7 @@ export const store = {
   pending: false,
   online: navigator.onLine,
   since: 0,
-  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], closings: [], quotes: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [] },
+  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], closings: [], quotes: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [], changes: [] },
   settings: { ...DEFAULT_SETTINGS },
   _loaded: new Set(),
   _subs: new Set(),
@@ -95,6 +97,7 @@ export const store = {
     const specs = [
       ...MASTER.map((col) => ({ col })),
       ...HISTORY.map((col) => ({ col, since: this.since })),
+      ...(this.can('orders') ? [{ col: 'changes', since: Date.now() - CHANGES_DAYS * DAY }] : []),
       { col: 'meta', docId: 'settings' },
     ];
     this.backend.watch(
@@ -129,6 +132,102 @@ export const store = {
     return { updatedAt: Date.now(), updatedBy: this.user?.email || '', ...extra };
   },
 
+  // ---------- Change history and Undo ----------
+  /** A record as it is right now (from what is loaded, or `known` for records fetched separately). */
+  _current(col, id, known = {}) {
+    if (known[`${col}/${id}`]) return known[`${col}/${id}`];
+    if (col === 'meta' && id === 'settings') return this.settings;
+    return (this.data[col] || []).find((d) => d.id === id) || null;
+  },
+  /**
+   * The steps that reverse `ops`: created records are deleted, changed fields get their old values back,
+   * deleted records come back, and stock is reversed by the difference (so later sales are kept).
+   */
+  _inverse(ops, known = {}) {
+    const inv = [];
+    const clean = (d) => { const { id, ...rest } = d; return structuredClone(rest); };
+    const seenNew = new Set();
+    for (const op of ops) {
+      if (!op.col || op.col.startsWith('/') || op.col === 'changes') continue;
+      const key = `${op.col}/${op.id}`;
+      const before = seenNew.has(key) ? null : this._current(op.col, op.id, known);
+      if (op.type === 'incr') {
+        inv.push({ type: 'incr', col: op.col, id: op.id, field: op.field, by: -num(op.by) });
+        const fields = Object.keys(op.data || {}).filter((f) => !STAMP_FIELDS.has(f));
+        if (before && fields.length) inv.push({ type: 'update', col: op.col, id: op.id, data: Object.fromEntries(fields.map((f) => [f, before[f] ?? null])), after: Object.fromEntries(fields.map((f) => [f, op.data[f] ?? null])) });
+      } else if (op.type === 'set') {
+        if (before) inv.push({ type: 'set', col: op.col, id: op.id, data: clean(before) });
+        else { inv.push({ type: 'delete', col: op.col, id: op.id, created: true }); seenNew.add(key); }
+      } else if (op.type === 'merge' || op.type === 'update') {
+        if (!before) { if (!seenNew.has(key)) { inv.push({ type: 'delete', col: op.col, id: op.id, created: true }); seenNew.add(key); } continue; }
+        const fields = Object.keys(op.data || {}).filter((f) => !STAMP_FIELDS.has(f));
+        const data = {}, after = {};
+        for (const f of fields) {
+          if (f === 'stock' && op.col === 'items') {
+            // stock set to a number: undo by the difference, not by overwriting
+            const diff = num(before.stock) - num(op.data.stock);
+            if (diff) inv.push({ type: 'incr', col: op.col, id: op.id, field: 'stock', by: diff });
+            continue;
+          }
+          data[f] = before[f] === undefined ? null : structuredClone(before[f]);
+          after[f] = op.data[f] === undefined ? null : structuredClone(op.data[f]);
+        }
+        if (Object.keys(data).length) inv.push({ type: 'update', col: op.col, id: op.id, data, after });
+      } else if (op.type === 'delete') {
+        if (before) inv.push({ type: 'set', col: op.col, id: op.id, data: clean(before) });
+      }
+    }
+    return inv.reverse();
+  },
+  /**
+   * Write `ops` and record them in the change history with the steps to undo them.
+   * Big changes are written in parts; the history record goes with the last part.
+   */
+  _commit(label, ops, { known = {}, detail = '' } = {}) {
+    if (!ops.length) return Promise.resolve();
+    const undo = this._inverse(ops, known);
+    const id = this.backend.newId('changes');
+    const rec = { ts: Date.now(), label, detail, count: ops.length, by: this.user?.email || '', byName: this.user?.name || '', undo, undone: false };
+    const size = JSON.stringify(rec).length;
+    if (size > 900_000) { rec.undo = []; rec.tooBig = true; } // too large to keep the undo steps
+    const all = [...ops, { type: 'set', col: 'changes', id, data: rec }];
+    this.lastChange = { id, label, at: Date.now() };
+    // Let the screen offer "Undo" on the message that follows this action.
+    if (typeof window !== 'undefined') setTimeout(() => window.dispatchEvent(new CustomEvent('shop:change', { detail: { id, label, at: rec.ts } })), 60);
+    let p = Promise.resolve();
+    for (let i = 0; i < all.length; i += 450) p = this.backend.write(all.slice(i, i + 450));
+    return p;
+  },
+  /** Fields changed again since this change (shown as a warning before undoing). */
+  changedSince(rec) {
+    const out = [];
+    for (const op of rec.undo || []) {
+      if (op.type !== 'update' || !op.after) continue;
+      const cur = this._current(op.col, op.id);
+      if (!cur) { out.push({ col: op.col, id: op.id, name: '(removed)', field: '' }); continue; }
+      for (const [f, v] of Object.entries(op.after)) {
+        if (JSON.stringify(cur[f] ?? null) !== JSON.stringify(v ?? null)) out.push({ col: op.col, id: op.id, name: cur.name || cur.no || op.id, field: f });
+      }
+    }
+    return out;
+  },
+  /** Undo a recorded change. Only owners, and managers the owner allows. */
+  undoChange(rec) {
+    if (!this.can('clear')) throw new Error('Only the owner, or a manager the owner has allowed, can undo changes');
+    if (rec.undone) throw new Error('This change was already undone');
+    if (rec.tooBig || !(rec.undo || []).length) throw new Error('This change is too large to undo automatically');
+    const ops = rec.undo.map(({ after, created, ...op }) => {
+      // A record that no longer exists cannot be "updated": put the old values back as a merge instead.
+      if (op.type === 'update' && !this._current(op.col, op.id)) return { ...op, type: 'merge' };
+      if (op.type === 'incr' && op.col === 'items' && !this._current('items', op.id)) return null;
+      return op;
+    }).filter(Boolean);
+    ops.push({ type: 'merge', col: 'changes', id: rec.id, data: { undone: true, undoneAt: Date.now(), undoneBy: this.user?.email || '' } });
+    let p = Promise.resolve();
+    for (let i = 0; i < ops.length; i += 450) p = this.backend.write(ops.slice(i, i + 450));
+    return p;
+  },
+
   // ---------- Items ----------
   saveItem(input) {
     const isNew = !input.id;
@@ -155,27 +254,27 @@ export const store = {
       data.stock = num(input.stock);
       data.lastCost = num(input.cost);
       data.createdAt = Date.now();
-      this.backend.write([{ type: 'set', col: 'items', id, data }]);
+      this._commit(`Added item ${data.name}`, [{ type: 'set', col: 'items', id, data }]);
     } else {
-      this.backend.write([{ type: 'merge', col: 'items', id, data }]);
+      this._commit(`Edited item ${data.name}`, [{ type: 'merge', col: 'items', id, data }]);
     }
     return id;
   },
   /** changes: [{ id, minStock, maxStock }] — saved together. */
   setLevels(changes) {
     const ops = changes.map((c) => ({ type: 'merge', col: 'items', id: c.id, data: { minStock: num(c.minStock), maxStock: num(c.maxStock), ...this._stamp() } }));
-    for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
+    this._commit(`Changed min / max for ${ops.length} item${ops.length === 1 ? '' : 's'}`, ops);
     return ops.length;
   },
   /** Rename item categories: pairs of [old, new] (same new name merges them). */
   renameCategories(pairs) {
     const map = new Map(pairs);
     const ops = this.data.items.filter((i) => map.has(i.category)).map((i) => ({ type: 'merge', col: 'items', id: i.id, data: { category: map.get(i.category), ...this._stamp() } }));
-    for (let k = 0; k < ops.length; k += 400) this.backend.write(ops.slice(k, k + 400));
+    this._commit(`Renamed ${pairs.length} categor${pairs.length === 1 ? 'y' : 'ies'}`, ops);
     return ops.length;
   },
   archiveItem(id) {
-    this.backend.write([{ type: 'merge', col: 'items', id, data: { active: false, ...this._stamp() } }]);
+    this._commit(`Removed item ${this.item(id)?.name || ''}`, [{ type: 'merge', col: 'items', id, data: { active: false, ...this._stamp() } }]);
   },
 
   /** Bulk import (e.g. from a Loyverse items export). Matches existing items by SKU, then name. */
@@ -232,7 +331,7 @@ export const store = {
         added++;
       }
     }
-    for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
+    this._commit(`Imported items: ${added} new, ${updated} updated`, ops);
     return { added, updated };
   },
 
@@ -405,7 +504,7 @@ export const store = {
       data: { no: docNo('P', ts), ts, date: dayKey(ts), supplierId, supplierName: sup?.name || '', ref, lines: outLines, total, paid, note, rfqId, poId, poNo, by: this.user?.email || '' },
     });
     if (rfqId) ops.push({ type: 'merge', col: 'rfqs', id: rfqId, data: { status: 'closed', purchaseId: id, ...this._stamp() } });
-    this.backend.write([...ops, ...extraOps]);
+    this._commit(poNo ? `Received delivery for ${poNo}` : `Received stock ${docNo('P', ts)}`, [...ops, ...extraOps], { detail: `${outLines.length} item${outLines.length === 1 ? '' : 's'} · TSh ${total.toLocaleString('en-US')}` });
     return id;
   },
 
@@ -486,8 +585,12 @@ export const store = {
     if (!poLines.length) throw new Error('No lines to order — match or create at least one item');
     aliases[supKey] = mine;
     ops.push({ type: 'merge', col: 'meta', id: 'settings', data: { orderAliases: aliases, ...this._stamp() } });
-    this.backend.write(ops);
-    return this.savePo({ supplierId, lines: poLines, note: note || this.settings.poNote || '', imported: true });
+    const created = ops.filter((o) => o.col === 'items').length;
+    const { id, data } = this.buildPo({ supplierId, lines: poLines, note: note || this.settings.poNote || '' });
+    data.imported = true;
+    ops.push({ type: 'set', col: 'pos', id, data });
+    this._commit(`Imported order ${data.no}: ${poLines.length} line${poLines.length === 1 ? '' : 's'}${created ? `, ${created} new item${created === 1 ? '' : 's'}` : ''}`, ops);
+    return id;
   },
   /** Create (no id) or update a purchase order. Returns its id. */
   savePo(po) {
@@ -562,17 +665,18 @@ export const store = {
     const po = typeof poOrId === 'string' ? this.data.pos.find((x) => x.id === poOrId) : poOrId;
     if (!po) return;
     const ops = [];
+    const known = {};
     const received = po.lines.some((l) => num(l.received) > 0);
     if (received) {
       if (!this.can('clear')) throw new Error('Received orders can only be deleted by the owner, or a manager the owner has allowed');
       const rev = await this.poReversal(po);
       for (const l of rev.lines) if (l.take > 0 && !l.gone) ops.push({ type: 'incr', col: 'items', id: l.itemId, field: 'stock', by: -l.take });
-      for (const p of rev.purchases) ops.push({ type: 'delete', col: 'purchases', id: p.id });
+      for (const p of rev.purchases) { ops.push({ type: 'delete', col: 'purchases', id: p.id }); known[`purchases/${p.id}`] = p; }
     } else if (!this.can('orders')) throw new Error('Only owners and managers can delete orders');
     // A request for quotation that became this order goes back to "sent".
     if (po.rfqId && this.data.rfqs.some((r) => r.id === po.rfqId)) ops.push({ type: 'merge', col: 'rfqs', id: po.rfqId, data: { status: 'sent', poId: '', ...this._stamp() } });
     ops.push({ type: 'delete', col: 'pos', id: po.id });
-    return this.backend.write(ops);
+    return this._commit(`Deleted order ${po.no}${received ? ' (received goods taken out of stock)' : ''}`, ops, { known });
   },
   /**
    * Receive (part of) a purchase order. receipts: [{ itemId, qty, cost }].
@@ -611,7 +715,7 @@ export const store = {
       data: { lines, status, closedShort: !complete && closeShort, ...(status === 'received' ? { receivedAt: Date.now() } : {}), ...this._stamp() },
     };
     const itemOps = remember.map((x) => ({ type: 'merge', col: 'items', id: x.itemId, data: { buyUnit: x.buyUnit, packSize: x.packSize, ...this._stamp() } }));
-    if (!got.size) { this.backend.write([poOp]); return null; }
+    if (!got.size) { this._commit(`Closed ${po.no} short`, [poOp]); return null; }
     return this.receivePurchase({
       supplierId: po.supplierId, ref, ts, paid, note, poId: po.id, poNo: po.no,
       lines: [...got.entries()].map(([i, r]) => {
@@ -633,7 +737,7 @@ export const store = {
     if (!change) return;
     const ts = Date.now();
     const before = new Map(this.plan().map((p) => [p.item.id, p.status]));
-    this.backend.write([
+    this._commit(`Stock adjusted: ${item.name} ${change > 0 ? '+' : ''}${change} (${reason})`, [
       { type: 'incr', col: 'items', id: item.id, field: 'stock', by: change },
       {
         type: 'set', col: 'adjustments', id: this.backend.newId('adjustments'),
@@ -658,7 +762,7 @@ export const store = {
       ops.push({ type: 'incr', col: 'items', id: itemId, field: 'stock', by: diff });
       ops.push({ type: 'set', col: 'adjustments', id: this.backend.newId('adjustments'), data: { ts, date: dayKey(ts), itemId, name: it.name, qty: diff, cost: num(it.cost), reason: 'Stock count', note, by: this.user?.email || '' } });
     }
-    for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
+    this._commit(`Stock count: ${changed} item${changed === 1 ? '' : 's'} changed`, ops);
     return { changed, value: money(value) };
   },
 
@@ -695,13 +799,14 @@ export const store = {
   },
   deleteExpense(id) {
     if (!this.can('clear')) throw new Error('Only the owner, or a manager the owner has allowed, can delete expenses');
-    this.backend.write([{ type: 'delete', col: 'expenses', id }]);
+    const x = this.data.expenses.find((e) => e.id === id);
+    this._commit(`Deleted expense${x ? ` ${x.category} TSh ${money(x.amount).toLocaleString('en-US')}` : ''}`, [{ type: 'delete', col: 'expenses', id }]);
   },
   /** Clear stock-loss figures (one or many). Only the figure goes; stock stays as it is. */
   clearAdjustments(ids) {
     if (!this.can('clear')) throw new Error('Only the owner, or a manager the owner has allowed, can clear losses');
     const ops = ids.map((id) => ({ type: 'delete', col: 'adjustments', id }));
-    for (let i = 0; i < ops.length; i += 400) this.backend.write(ops.slice(i, i + 400));
+    this._commit(`Cleared ${ops.length} loss figure${ops.length === 1 ? '' : 's'}`, ops);
     return ops.length;
   },
 
@@ -999,6 +1104,7 @@ export const store = {
     for (const [col, docs] of Object.entries(local)) {
       for (const [id, d] of Object.entries(docs || {})) {
         if (col === 'meta' && id !== 'settings') continue;
+        if (col === 'changes') continue; // the trial's change history stays behind
         ops.push({ type: col === 'meta' ? 'merge' : 'set', col, id, data: col === 'sales' ? { ...d, by: this.user?.email || d.by } : d });
       }
     }

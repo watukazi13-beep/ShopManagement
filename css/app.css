@@ -931,3 +931,12 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 .recv-table td:first-child { overflow-wrap: anywhere; }
 .recv-table td:nth-child(2) small { font-size: .68rem; white-space: nowrap; }
 @media (max-width: 639px) { .recv-table th:nth-child(2), .recv-table td:nth-child(2) { width: 60px; padding-left: 2px; padding-right: 4px; } }
+
+/* Toast with an action button (Undo) */
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast-msg { flex: 1; min-width: 0; }
+.toast-act { pointer-events: auto; flex: none; border: 0; border-radius: 8px; padding: 6px 12px; font: inherit; font-weight: 700; font-size: .85rem; cursor: pointer; background: var(--signal); color: #04130A; }
+.toast-act:hover { filter: brightness(1.08); }
+.ch-rows .row { align-items: center; }
+.ch-rows .ch-undone b { text-decoration: line-through; color: var(--muted); }
+.ch-rows .row b, .ch-rows .row small { white-space: normal; overflow: visible; text-overflow: clip; }

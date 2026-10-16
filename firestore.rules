@@ -114,6 +114,14 @@ service cloud.firestore {
         allow delete: if canClear();   // undoing a received order
       }
 
+      // Change history: anyone working in the shop records what they changed; undoing needs canClear.
+      match /changes/{id} {
+        allow read: if isBoss();
+        allow create: if isMember() && request.resource.data.by == myEmail();
+        allow update: if canClear() && onlyChanges(['undone', 'undoneAt', 'undoneBy']);
+        allow delete: if false;
+      }
+
       // Customers: sellers add them at the till and their credit sales change the balance.
       match /customers/{id} {
         allow read, create, update: if isMember();

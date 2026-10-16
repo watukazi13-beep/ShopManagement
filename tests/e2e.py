@@ -749,6 +749,42 @@ with sync_playwright() as p:
     check(ipo['status'] == 'received', 'imported order fully received')
     pg.click('[data-f=all]')
 
+    # --- Change history and Undo
+    def open_history():
+        go('#/settings'); pg.click('[data-act=changes]'); pg.wait_for_timeout(300)
+    def undo_row(text):
+        dlg().locator('.ch-rows li', has_text=text).first.locator('[data-undo]').click(); pg.wait_for_timeout(250)
+        dlg().get_by_role('button', name='Undo', exact=True).click(); pg.wait_for_timeout(600)
+        if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
+    open_history()
+    htxt = dlg().inner_text()
+    check(f"Received delivery for {ipo['no']}" in htxt and f"Imported order {ipo['no']}" in htxt, 'Change history lists the import and the delivery')
+    pg.screenshot(path=OUT + 'history.png')
+    undo_row(f"Received delivery for {ipo['no']}")
+    back = {n: item(pg, n)['stock'] for n in before}
+    ipo2 = next(p for p in pos_() if p['no'] == ipo['no'])
+    check(back == before and item(pg, 'Highlighter')['stock'] == 0, f'undo delivery: stock back to before ({back})')
+    check(ipo2['status'] == 'ordered' and all(not l.get('received') for l in ipo2['lines']), 'and the order is back to Ordered, nothing received')
+    check(not any(p.get('poNo') == ipo['no'] for p in data(pg)['purchases'].values()), 'and the delivery record is gone')
+    check(item(pg, 'Chalk').get('packSize') != 100, 'and chalk no longer remembers a carton of 100')
+    open_history()
+    check('undone' in dlg().locator('.ch-rows li', has_text=f"Received delivery for {ipo['no']}").first.inner_text(), 'history shows the delivery as undone')
+    undo_row(f"Imported order {ipo['no']}")
+    check(not any(p['no'] == ipo['no'] for p in pos_()) and not any(i['name'] == 'Highlighter' for i in data(pg)['items'].values()), 'undo import: draft order and the new item are gone')
+    # stock adjustment, then a sale, then undo the adjustment: the sale stays
+    rice0 = item(pg, 'Rice')['stock']
+    go('#/stock'); pg.locator('#stock-list tr', has=pg.locator('b:text-is("Rice")')).click(); pg.wait_for_timeout(250)
+    dlg().locator('[data-adjust]').click(); pg.wait_for_timeout(250)
+    dlg().locator('label.chip', has_text='Add').click(); dlg().locator('[name=qty]').fill('5'); dlg().locator('[name=reason]').select_option('Found')
+    dlg().get_by_role('button', name='Save').click(); pg.wait_for_timeout(400)
+    check(pg.locator('.toast-act', has_text='Undo').count() == 1, 'the message after an adjustment offers Undo')
+    pg.screenshot(path=OUT + 'toast-undo.png')
+    pg.evaluate("import('/js/store.js').then(({ store }) => { const r = store.data.items.find((i) => i.name === 'Rice'); store.recordSale({ lines: [{ itemId: r.id, qty: 1, price: r.price }] }); })")
+    pg.wait_for_timeout(400)
+    check(item(pg, 'Rice')['stock'] == rice0 + 4, 'adjust +5 then sell 1')
+    open_history(); undo_row('Stock adjusted: Rice +5')
+    check(item(pg, 'Rice')['stock'] == rice0 - 1, f"undo the +5: rice {rice0} + 5 − 1 − 5 = {rice0 - 1} (the sale is kept)")
+
 
     # --- Dashboard: money position on Home
     go('#/home')

@@ -6,6 +6,7 @@ import { APP_NAME, MAKER, AUTHOR, VERSION } from '../brand.js';
 import { installApp, isInstalled } from '../install.js';
 import { openSetup } from './setup.js';
 import { getTheme, setTheme } from '../theme.js';
+import { openChanges } from './changes.js';
 
 export default {
   title: 'Settings',
@@ -35,6 +36,9 @@ export default {
           </div>
           ${notif === 'denied' ? '<p class="muted small">Alerts are blocked for this site in your browser settings.</p>' : ''}
         </section>
+
+        ${store.can('orders') ? `
+        <section class="card setup-card"><div class="grow"><b>Change history</b><small>Imports, deliveries, stock counts, price and min/max changes and deletions from the last 60 days${store.can('clear') ? ' — with Undo' : ''}.</small></div><button type="button" class="btn ghost" data-act="changes">Open</button></section>` : ''}
 
         <section class="card">
           <div class="card-head"><h2>Appearance</h2></div>
@@ -159,6 +163,7 @@ export default {
       if (a === 'connect') openConnect();
       if (a === 'install') installApp();
       if (a === 'setup') openSetup();
+      if (a === 'changes') openChanges();
       const th = e.target.closest('[data-theme-pick]')?.dataset.themePick;
       if (th) { setTheme(th); draw(); }
       const rm = e.target.closest('[data-remove]')?.dataset.remove;

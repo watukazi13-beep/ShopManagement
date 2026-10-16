@@ -98,6 +98,12 @@ function allowed(kind, path, data, old) {
   const { shopId, col, role: r } = scope(path);
   if (!shopId) return false; // the old single-shop layout is read-only now
   if (!r) return false;
+  if (col === 'changes') {
+    const clear = r === 'owner' || (r === 'manager' && db[`shops/${shopId}`]?.canClear?.[u.email] === true);
+    if (kind === 'set' && !old) return data.by === u.email;
+    if (kind === 'update' || kind === 'merge') return clear && Object.keys(data).every((k) => ['undone', 'undoneAt', 'undoneBy'].includes(k));
+    return false;
+  }
   if (r === 'owner') return true;
   if (r === 'manager') {
     if (kind !== 'delete') return true;

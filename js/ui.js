@@ -60,7 +60,7 @@ const P = {
 export const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[name] || ''}</svg>`;
 
 // ---------- Toasts ----------
-export function toast(msg, { kind = 'ok', link, ms = 3200 } = {}) {
+export function toast(msg, { kind = 'ok', link, ms = 3200, action } = {}) {
   let wrap = document.getElementById('toasts');
   if (!wrap) { wrap = document.createElement('div'); wrap.id = 'toasts'; document.body.append(wrap); }
   // Keep at most two messages on screen so they never cover the page.
@@ -68,11 +68,27 @@ export function toast(msg, { kind = 'ok', link, ms = 3200 } = {}) {
   const t = document.createElement(link ? 'a' : 'div');
   t.className = `toast toast-${kind}`;
   if (link) t.href = link;
-  t.innerHTML = esc(msg);
+  t.innerHTML = `<span class="toast-msg">${esc(msg)}</span>`;
   t.setAttribute('role', 'status');
   wrap.append(t);
-  setTimeout(() => t.classList.add('out'), ms);
-  setTimeout(() => t.remove(), ms + 400);
+  const timer = { out: setTimeout(() => t.classList.add('out'), ms), rm: setTimeout(() => t.remove(), ms + 400) };
+  const api = {
+    el: t, at: Date.now(), kind,
+    /** Add a button (e.g. Undo) and keep the message up longer. */
+    addAction(label, fn, keepMs = 9000) {
+      if (t.querySelector('.toast-act')) return;
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'toast-act'; b.textContent = label;
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); t.remove(); fn(); });
+      t.append(b);
+      clearTimeout(timer.out); clearTimeout(timer.rm);
+      timer.out = setTimeout(() => t.classList.add('out'), keepMs);
+      timer.rm = setTimeout(() => t.remove(), keepMs + 400);
+    },
+  };
+  if (action) api.addAction(action.label, action.fn, action.ms);
+  toast.last = api;
+  return api;
 }
 
 // ---------- Dialogs ----------
