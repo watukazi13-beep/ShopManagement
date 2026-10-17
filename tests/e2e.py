@@ -815,6 +815,26 @@ with sync_playwright() as p:
     pg.evaluate("import('/js/store.js').then(({ store }) => { const d = new Date(); d.setDate(d.getDate() + 1); window.__open2 = store.openingCashFor(d.toISOString().slice(0, 10)); })"); pg.wait_for_timeout(200)
     check(pg.evaluate('window.__open2') == cash_exp - 3000, "tomorrow starts with the cash left in the drawer")
 
+    # --- A service that uses stock: photocopy uses paper
+    ream = item(pg, 'Ream A4 Double A')
+    ream_id = next(k for k, v in data(pg)['items'].items() if v['name'] == 'Ream A4 Double A')
+    go('#/stock?new=1'); pg.wait_for_timeout(250)
+    dlg().locator('[name=name]').fill('Copy A4'); dlg().locator('[name=price]').fill('100')
+    dlg().locator('summary', has_text='Barcode').click(); dlg().locator('[name=service]').check()
+    dlg().locator('[data-add-use]').click()
+    dlg().locator('.use-row .use-item').select_option(label='Ream A4 Double A'); dlg().locator('.use-row .use-per input').fill('500'); dlg().locator('.use-row .use-per input').dispatch_event('input')
+    pg.screenshot(path=OUT + 'item-uses.png')
+    submit('Add item'); pg.wait_for_timeout(300)
+    cp = item(pg, 'Copy A4')
+    check(cp['service'] is True and cp.get('uses') == [{'itemId': ream_id, 'per': 500}], 'service saved: 1 ream covers 500 copies')
+    pg.evaluate("import('/js/store.js').then(({ store }) => { const c = store.data.items.find((i) => i.name === 'Copy A4'); window.__s = store.recordSale({ lines: [{ itemId: c.id, qty: 50, price: 100 }] }); })"); pg.wait_for_timeout(400)
+    sale = pg.evaluate('window.__s')
+    r1 = item(pg, 'Ream A4 Double A')['stock']
+    check(abs(r1 - (ream['stock'] - 0.1)) < 1e-6, f"50 copies take 0.1 ream out of stock ({ream['stock']} -> {r1})")
+    check(abs(sale['lines'][0]['cost'] - ream['cost'] / 500) < 0.01 and abs(sale['cogs'] - 50 * ream['cost'] / 500) < 1, f"paper cost counts: {sale['cogs']:,.0f} for 50 copies")
+    pg.evaluate("import('/js/store.js').then(({ store }) => store.voidSale(store.data.sales.find((x) => x.id === window.__s.id), 'test'))"); pg.wait_for_timeout(400)
+    check(abs(item(pg, 'Ream A4 Double A')['stock'] - ream['stock']) < 1e-6, 'cancelling the sale puts the paper back')
+
 
     # --- Dashboard: money position on Home
     go('#/home')

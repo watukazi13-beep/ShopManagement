@@ -1,7 +1,7 @@
 // App state + every action that changes data.
 import {
   DAY, monthLabel, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
-  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing, unitPrice, inPacks, lineAmount, normUnit, normName, dayClose,
+  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing, unitPrice, inPacks, lineAmount, normUnit, normName, dayClose, usesFor,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -248,6 +248,8 @@ export const store = {
       supplierId: input.supplierId || '',
       service: !!input.service,
       variablePrice: !!input.variablePrice,
+      uses: (Array.isArray(input.uses) ? input.uses : (() => { try { return JSON.parse(input.uses || '[]'); } catch { return []; } })())
+        .filter((u) => u && u.itemId && num(u.per) > 0).map((u) => ({ itemId: u.itemId, per: num(u.per) })),
       active: true,
       ...this._stamp(),
     };
@@ -343,7 +345,12 @@ export const store = {
       .filter((l) => num(l.qty) > 0)
       .map((l) => {
         const it = this.item(l.itemId) || {};
-        return { itemId: l.itemId, name: it.name || l.name, qty: num(l.qty), price: money(l.price), cost: num(it.cost), unit: it.unit || 'pcs' };
+        // Paper for a photocopy, a pouch for lamination…: their cost is part of this sale's cost.
+        const u = usesFor(it, l.qty, (id) => this.item(id));
+        return {
+          itemId: l.itemId, name: it.name || l.name, qty: num(l.qty), price: money(l.price), cost: unitPrice(num(it.cost) + u.costPerUnit), unit: it.unit || 'pcs',
+          ...(u.used.length ? { used: u.used.map(({ itemId, name, per }) => ({ itemId, name, per })) } : {}),
+        };
       });
     if (!full.length) throw new Error('The cart is empty');
     const sub = full.reduce((t, l) => t + l.qty * l.price, 0);
@@ -361,10 +368,13 @@ export const store = {
     };
     const before = new Map(this.plan().map((p) => [p.item.id, p.status]));
     const ops = [{ type: 'set', col: 'sales', id, data: sale }];
+    const usedTotal = new Map();
     for (const l of full) {
       const it = this.item(l.itemId);
       if (it && !it.service) ops.push({ type: 'incr', col: 'items', id: l.itemId, field: 'stock', by: -l.qty });
+      for (const u of l.used || []) usedTotal.set(u.itemId, num(usedTotal.get(u.itemId)) + l.qty / u.per);
     }
+    for (const [itemId, q] of usedTotal) if (this.item(itemId)) ops.push({ type: 'incr', col: 'items', id: itemId, field: 'stock', by: -Math.round(q * 10000) / 10000 });
     if (cust) {
       ops.push({ type: 'incr', col: 'customers', id: cust.id, field: 'spent', by: totals.total, data: { lastVisit: ts } });
       if (credit) ops.push({ type: 'incr', col: 'customers', id: cust.id, field: 'balance', by: totals.total });
@@ -379,6 +389,7 @@ export const store = {
     for (const l of sale.lines) {
       const it = this.item(l.itemId);
       if (it && !it.service) ops.push({ type: 'incr', col: 'items', id: l.itemId, field: 'stock', by: num(l.qty) });
+      for (const u of l.used || []) if (this.item(u.itemId)) ops.push({ type: 'incr', col: 'items', id: u.itemId, field: 'stock', by: Math.round((num(l.qty) / num(u.per)) * 10000) / 10000 });
     }
     if (sale.customerId && this.customer(sale.customerId)) {
       ops.push({ type: 'incr', col: 'customers', id: sale.customerId, field: 'spent', by: -num(sale.total) });
@@ -408,6 +419,7 @@ export const store = {
     for (const l of rf.lines) {
       const it = this.item(l.itemId);
       if (it && !it.service) ops.push({ type: 'incr', col: 'items', id: l.itemId, field: 'stock', by: Math.abs(l.qty) });
+      for (const u of l.used || []) if (this.item(u.itemId)) ops.push({ type: 'incr', col: 'items', id: u.itemId, field: 'stock', by: Math.round((Math.abs(l.qty) / num(u.per)) * 10000) / 10000 });
     }
     if (sale.customerId && this.customer(sale.customerId)) {
       ops.push({ type: 'incr', col: 'customers', id: sale.customerId, field: 'spent', by: rf.total });

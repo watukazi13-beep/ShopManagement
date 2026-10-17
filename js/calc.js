@@ -622,3 +622,21 @@ export function dayClose({ day, sales = [], payments = [], expenses = [], method
     expected: money(out.reduce((t, r) => t + r.expected, 0)),
   };
 }
+
+// ---------- Items that use other items (photocopy uses paper, lamination uses a pouch) ----------
+/**
+ * item.uses = [{ itemId, per }] — one unit of that item covers `per` sales of this one.
+ * Returns what `qty` sold takes out of stock and the cost it adds per unit sold.
+ */
+export function usesFor(item, qty, itemById) {
+  const out = [];
+  let costPerUnit = 0;
+  for (const u of item?.uses || []) {
+    const per = num(u.per);
+    const used = itemById(u.itemId);
+    if (!(per > 0) || !used) continue;
+    out.push({ itemId: u.itemId, name: used.name, per, qty: Math.round((num(qty) / per) * 10000) / 10000 });
+    costPerUnit += num(used.cost) / per;
+  }
+  return { used: out, costPerUnit };
+}

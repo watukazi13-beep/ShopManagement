@@ -955,3 +955,11 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 .dc-table input.dc-count { max-width: none; -moz-appearance: textfield; appearance: textfield; }
 .dc-table input.dc-count::-webkit-inner-spin-button, .dc-table input.dc-count::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .dc-table td:first-child { overflow-wrap: anywhere; }
+
+/* Items used when this one is sold (paper for photocopy…) */
+.use-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.use-row .use-item { flex: 1 1 180px; min-height: 40px; }
+.use-per { display: inline-flex; align-items: center; gap: 6px; font-size: .86rem; color: var(--muted); }
+.use-per input { width: 84px; min-height: 40px; padding: 6px 8px; text-align: right; }
+.uses-group > .btn { margin-top: 8px; }
+.uses-note { color: var(--muted); }

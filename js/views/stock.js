@@ -169,6 +169,12 @@ export function openItemForm(item = null) {
         </div>
         ${field('Usual supplier', `<select name="supplierId"><option value="">— None —</option>${sups.map((s) => `<option value="${s.id}" ${s.id === it.supplierId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`)}
       </fieldset>
+      <fieldset class="group uses-group"><legend>Uses other items when sold</legend>
+        <p class="muted small">For services and items made from stock: a photocopy uses paper, a passport photo uses photo paper, lamination uses a pouch. Each sale then takes that share out of stock and its cost counts in your profit.</p>
+        <div id="uses-rows"></div>
+        <button type="button" class="btn ghost small" data-add-use>${icon('plus')}Add an item it uses</button>
+        <input type="hidden" name="uses" value="">
+      </fieldset>
       <details class="more"><summary>Barcode, SKU and more</summary>
         <div class="grid2">
           ${field('SKU / code', `<input name="sku" value="${esc(it.sku)}">`)}
@@ -179,6 +185,26 @@ export function openItemForm(item = null) {
     actions: `${item ? '<button type="button" class="btn ghost danger" data-archive>Remove</button>' : ''}<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">${item ? 'Save changes' : 'Add item'}</button>`,
     onMount: (dlg, close) => {
       const f = dlg.querySelector('form');
+      // "Uses other items": one row per item, "1 <unit> covers N sales of this".
+      const stockItems = store.activeItems().filter((i) => !i.service && i.id !== item?.id).sort((a, b) => a.name.localeCompare(b.name));
+      const usesBox = dlg.querySelector('#uses-rows');
+      const useRow = (u = {}) => `<div class="use-row">
+          <select class="use-item" aria-label="Item it uses"><option value="">Choose item…</option>${stockItems.map((i) => `<option value="${i.id}" ${i.id === u.itemId ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select>
+          <label class="use-per">1 <span class="use-unit">${esc(store.item(u.itemId)?.unit || 'pcs')}</span> covers <input type="number" inputmode="decimal" min="0.0001" step="any" value="${u.per || ''}" placeholder="500" aria-label="Sales covered by one unit"> sales</label>
+          <button type="button" class="icon-btn" data-del-use aria-label="Remove">${icon('x')}</button></div>`;
+      const syncUses = () => {
+        const rows = [...usesBox.querySelectorAll('.use-row')].map((r) => ({ itemId: r.querySelector('.use-item').value, per: num(r.querySelector('.use-per input').value) })).filter((u) => u.itemId && u.per > 0);
+        f.uses.value = JSON.stringify(rows);
+      };
+      usesBox.innerHTML = (it.uses || []).map(useRow).join('');
+      dlg.querySelector('[data-add-use]').addEventListener('click', () => { usesBox.insertAdjacentHTML('beforeend', useRow()); syncUses(); });
+      usesBox.addEventListener('click', (e) => { if (e.target.closest('[data-del-use]')) { e.target.closest('.use-row').remove(); syncUses(); } });
+      usesBox.addEventListener('input', syncUses);
+      usesBox.addEventListener('change', (e) => {
+        if (e.target.classList.contains('use-item')) e.target.closest('.use-row').querySelector('.use-unit').textContent = store.item(e.target.value)?.unit || 'pcs';
+        syncUses();
+      });
+      syncUses();
       const unitName = () => (f.buyKind.value === 'other' ? f.buyOther.value.trim() || 'unit' : f.buyKind.value);
       const pcName = () => f.unit.value.trim() || 'pcs';
       const showPack = () => {
@@ -287,6 +313,7 @@ function openItem(item) {
         <div class="${plan.status !== 'ok' ? 'warn' : ''}"><span>${plan.suggestQty ? 'Order now' : 'Lasts about'}</span><strong>${plan.suggestQty ? fmtQty(plan.suggestQty) + ' ' + esc(item.unit || '') : plan.daysLeft !== null ? Math.floor(plan.daysLeft) + ' days' : '—'}</strong></div>
       </div>` : ''}
       <p class="muted small">${[item.category, item.sku && 'SKU ' + item.sku, item.barcode && 'Barcode ' + item.barcode, sup && 'Supplier: ' + sup.name, item.lastCost && boss ? 'Last bought at ' + fmt(item.lastCost) : ''].filter(Boolean).map(esc).join(' · ')}</p>
+      ${(item.uses || []).length ? `<p class="small uses-note">Each sale uses ${(item.uses || []).map((u) => { const x = store.item(u.itemId); return x ? `1/${fmtQty(u.per)} ${esc(x.unit || 'pcs')} of <b>${esc(x.name)}</b>${boss ? ` (${fmt(num(x.cost) / num(u.per))})` : ''}` : ''; }).filter(Boolean).join(', ')}.</p>` : ''}
       ${(() => {
         const open = store.openPos().filter((po) => po.lines.some((l) => l.itemId === item.id && num(l.received) < num(l.qty)));
         return open.length ? `<h3>On order</h3><ul class="rows">${open.map((po) => {
