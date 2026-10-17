@@ -7,6 +7,7 @@ import { installApp, isInstalled } from '../install.js';
 import { openSetup } from './setup.js';
 import { getTheme, setTheme } from '../theme.js';
 import { openChanges } from './changes.js';
+import { tillCard, wireTillCard } from './staff.js';
 
 export default {
   title: 'Settings',
@@ -39,6 +40,8 @@ export default {
 
         ${store.can('orders') ? `
         <section class="card setup-card"><div class="grow"><b>Change history</b><small>Imports, deliveries, stock counts, price and min/max changes and deletions from the last 60 days${store.can('clear') ? ' — with Undo' : ''}.</small></div><button type="button" class="btn ghost" data-act="changes">Open</button></section>` : ''}
+
+        ${store.can('settings') || (store.settings.staff || []).length ? tillCard() : ''}
 
         <section class="card">
           <div class="card-head"><h2>Appearance</h2></div>
@@ -130,6 +133,7 @@ export default {
           </div>
         </section>`;
 
+      wireTillCard(el, draw);
       el.querySelector('#shop-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         const v = Object.fromEntries(new FormData(e.target).entries());

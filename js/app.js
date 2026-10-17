@@ -6,6 +6,7 @@ import { MAKER, AUTHOR, CREDIT, bookLoader } from './brand.js';
 import { installApp, isInstalled } from './install.js';
 import { applyTheme, shownTheme, toggleTheme } from './theme.js';
 import { offerUndo } from './views/changes.js';
+import { initTill, lock as lockTill, staffChip } from './views/staff.js';
 
 applyTheme();
 import home from './views/home.js';
@@ -169,6 +170,7 @@ function showShell() {
     <header class="topbar">
       <a href="#/home" class="brand" id="brand"><img class="brand-icon" src="brand/book-icon.svg" alt="" width="32" height="32"><span class="brand-text"><span id="shop-name"></span><small class="brand-sub">Shop Manager</small></span><span id="shop-caret"></span></a>
       <span class="sync" id="sync" role="status"></span>
+      <span id="staff-slot"></span>
       <button type="button" class="icon-btn theme-btn" id="theme-btn"></button>
       <a href="#/settings" class="icon-btn" aria-label="Settings">${icon('settings')}</a>
     </header>
@@ -207,6 +209,11 @@ function paintChrome() {
       : store.pending ? ['busy', 'Syncing…'] : ['on', 'Synced'];
   sync.className = `sync ${cls}`;
   sync.innerHTML = `<i></i><span>${text}</span>`;
+  const slot = document.getElementById('staff-slot');
+  if (slot) {
+    const chip = staffChip();
+    if (slot.innerHTML !== chip) { slot.innerHTML = chip; slot.querySelector('#staff-chip')?.addEventListener('click', lockTill); }
+  }
   const lows = store.ready ? store.lowStock().length : 0;
   const stockLink = document.querySelector('[data-nav=stock]');
   if (stockLink) stockLink.dataset.badge = lows ? String(lows) : '';
@@ -231,6 +238,9 @@ function route() {
   el.scrollTop = 0;
   window.scrollTo(0, 0);
 }
+
+// A different person unlocked the shared till: rebuild the menu for their role.
+window.addEventListener('staff-change', () => { if (shell) showShell(); });
 
 // Right after an import, delivery, count or deletion, the message offers "Undo".
 window.addEventListener('shop:change', (e) => { if (shell) offerUndo(e.detail); });
@@ -315,6 +325,7 @@ async function boot() {
 
   let checked = false;
   store.subscribe(() => {
+    if (store.ready && shell) initTill(); // shared till: ask who is selling
     if (!checked && store.ready && shell) {
       checked = true;
       setTimeout(() => store.dailyLowStockCheck(), 2000);

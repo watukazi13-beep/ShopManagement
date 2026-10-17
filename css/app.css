@@ -963,3 +963,22 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 .use-per input { width: 84px; min-height: 40px; padding: 6px 8px; text-align: right; }
 .uses-group > .btn { margin-top: 8px; }
 .uses-note { color: var(--muted); }
+
+/* ---------- Shared till: staff lock screen ---------- */
+#staff-lock { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 20px; background: radial-gradient(120% 80% at 50% 30%, #145E3B 0%, #0F4A2E 55%, #0B3A24 100%); color: #fff; outline: none; }
+.lock-card { width: 100%; max-width: 340px; display: grid; justify-items: center; gap: 10px; text-align: center; }
+.lock-card h1 { margin: 6px 0 0; font-size: 1.5rem; color: #fff; }
+.lock-card .muted { color: rgb(255 255 255 / 70%); margin: 0; }
+.staff-pick { width: 100%; display: grid; gap: 8px; margin-top: 10px; }
+.staff-pick .btn { display: flex; justify-content: space-between; align-items: center; background: rgb(255 255 255 / 10%); color: #fff; border-color: rgb(255 255 255 / 20%); min-height: 54px; }
+.staff-pick .btn small { color: rgb(255 255 255 / 65%); font-weight: 500; }
+.pin-dots { display: flex; gap: 14px; margin: 8px 0 2px; }
+.pin-dots i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgb(255 255 255 / 70%); }
+.pin-dots i.on { background: #22B45E; border-color: #22B45E; }
+.pin-err { min-height: 1.2em; margin: 0; color: #FFB4AB; font-weight: 600; font-size: .9rem; }
+.pin-pad { display: grid; grid-template-columns: repeat(3, 72px); gap: 12px; margin-top: 6px; }
+.pin-pad button { height: 64px; border-radius: 50%; border: 0; background: rgb(255 255 255 / 12%); color: #fff; font: inherit; font-size: 1.4rem; font-weight: 600; cursor: pointer; display: grid; place-items: center; }
+.pin-pad button:active { background: rgb(34 180 94 / 60%); }
+.pin-pad .ic { width: 22px; height: 22px; }
+.staff-chip { border: 1px solid var(--line); background: var(--green-2); color: var(--green); border-radius: 999px; padding: 5px 10px; font: inherit; font-size: .8rem; font-weight: 700; cursor: pointer; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.field.inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }

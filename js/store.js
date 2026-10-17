@@ -49,6 +49,7 @@ export const store = {
   user: null,
   access: null,
   role: null, // 'owner' | 'manager' | 'staff'
+  activeStaff: null, // on a shared till: the person who unlocked it with their PIN { id, name, role, canClear }
   // Multiple shops: management (platform/admins) creates shops; each shop has owners and members.
   admins: null,
   isAdmin: false,
@@ -72,12 +73,21 @@ export const store = {
   customer(id) { return this.data.customers.find((c) => c.id === id); },
   isCreditPay(pay) { return /credit|deni|mkopo/i.test(pay || ''); },
   activeItems() { return this.data.items.filter((i) => i.active !== false).sort((a, b) => a.name.localeCompare(b.name)); },
+  /** The role that applies now: on a shared till, the unlocked staff member's role (never more than the account's). */
+  effectiveRole() {
+    const rank = { staff: 0, manager: 1, owner: 2 };
+    const s = this.activeStaff;
+    if (!s) return this.role;
+    return rank[s.role] < rank[this.role] ? s.role : this.role;
+  },
+  /** Name recorded on sales, pay-outs, closings: the staff member on a shared till, else the signed-in person. */
+  whoName() { return this.activeStaff?.name || this.user?.name || ''; },
   can(what) {
-    if (what === 'manage') return this.isAdmin; // all shops: management only
-    const r = this.role;
+    if (what === 'manage') return this.isAdmin && (!this.activeStaff || this.activeStaff.role === 'owner'); // all shops: management only
+    const r = this.effectiveRole();
     if (r === 'owner') return true;
     // 'clear' = delete received orders, clear losses, delete expenses: managers only when the owner allows it.
-    if (r === 'manager') return what === 'clear' ? !!this.shop?.canClear?.[this.user?.email] : what !== 'users';
+    if (r === 'manager') return what === 'clear' ? (this.activeStaff ? !!this.activeStaff.canClear : !!this.shop?.canClear?.[this.user?.email]) : what !== 'users';
     if (what === 'clear') return false;
     if (what === 'receive') return !!this.settings.staffCanReceive;
     return ['sell', 'viewStock'].includes(what);
@@ -188,7 +198,7 @@ export const store = {
     if (!ops.length) return Promise.resolve();
     const undo = this._inverse(ops, known);
     const id = this.backend.newId('changes');
-    const rec = { ts: Date.now(), label, detail, count: ops.length, by: this.user?.email || '', byName: this.user?.name || '', undo, undone: false };
+    const rec = { ts: Date.now(), label, detail, count: ops.length, by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}), undo, undone: false };
     const size = JSON.stringify(rec).length;
     if (size > 900_000) { rec.undo = []; rec.tooBig = true; } // too large to keep the undo steps
     const all = [...ops, { type: 'set', col: 'changes', id, data: rec }];
@@ -364,7 +374,7 @@ export const store = {
       no: docNo('S', ts), ts, date: dayKey(ts), lines: full, ...totals, pay,
       tax: taxIncluded(totals.total, this.settings.taxRate), taxRate: num(this.settings.taxRate),
       customerId: cust?.id || '', customer: cust?.name || customer || '', credit, note,
-      voided: false, by: this.user?.email || '', byName: this.user?.name || '',
+      voided: false, by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}),
     };
     const before = new Map(this.plan().map((p) => [p.item.id, p.status]));
     const ops = [{ type: 'set', col: 'sales', id, data: sale }];
@@ -410,7 +420,7 @@ export const store = {
       lines: rf.lines, subtotal: rf.subtotal, discount: rf.discount, total: rf.total, cogs: rf.cogs,
       tax: -taxIncluded(-rf.total, sale.taxRate ?? this.settings.taxRate), pay: sale.pay,
       customerId: sale.customerId || '', customer: sale.customer || '', credit: !!sale.credit, note: reason,
-      voided: false, by: this.user?.email || '', byName: this.user?.name || '',
+      voided: false, by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}),
     };
     const ops = [
       { type: 'set', col: 'sales', id, data: doc },
@@ -448,7 +458,7 @@ export const store = {
     if (!(amt > 0)) throw new Error('Enter the amount paid');
     const id = this.backend.newId('payments');
     this.backend.write([
-      { type: 'set', col: 'payments', id, data: { no: docNo('PAY', ts), ts, date: dayKey(ts), customerId: c.id, customer: c.name, amount: amt, method, note, by: this.user?.email || '', byName: this.user?.name || '' } },
+      { type: 'set', col: 'payments', id, data: { no: docNo('PAY', ts), ts, date: dayKey(ts), customerId: c.id, customer: c.name, amount: amt, method, note, by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}) } },
       { type: 'incr', col: 'customers', id: c.id, field: 'balance', by: -amt },
     ]);
     return id;
@@ -780,13 +790,13 @@ export const store = {
   },
 
   // ---------- Shifts (cash drawer) ----------
-  myOpenShift() { return this.data.shifts.find((s) => !s.closedAt && s.by === this.user?.email); },
+  myOpenShift() { return this.data.shifts.find((s) => !s.closedAt && s.by === this.user?.email && (s.staffId || '') === (this.activeStaff?.id || '')); },
   shiftFigures(shift) { return shiftExpected(shift, this.data.sales, this.data.payments, { cashName: (this.settings.payMethods || ['Cash'])[0] || 'Cash' }); },
   openShift(openingCash) {
     if (this.myOpenShift()) throw new Error('You already have an open shift');
     const ts = Date.now();
     const id = this.backend.newId('shifts');
-    this.backend.write([{ type: 'set', col: 'shifts', id, data: { no: docNo('SH', ts), ts, date: dayKey(ts), openingCash: money(openingCash), moves: [], by: this.user?.email || '', byName: this.user?.name || '' } }]);
+    this.backend.write([{ type: 'set', col: 'shifts', id, data: { no: docNo('SH', ts), ts, date: dayKey(ts), openingCash: money(openingCash), moves: [], by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}) } }]);
     return id;
   },
   shiftMove(shift, { type, amount, note = '' }) {
@@ -807,7 +817,7 @@ export const store = {
     const ts = e.ts || Date.now();
     this.backend.write([{
       type: 'set', col: 'expenses', id,
-      data: { ts, date: dayKey(ts), category: e.category || 'Other', amount: money(e.amount), note: e.note || '', paidFrom: e.paidFrom || '', by: this.user?.email || '', byName: this.user?.name || '', ...this._stamp() },
+      data: { ts, date: dayKey(ts), category: e.category || 'Other', amount: money(e.amount), note: e.note || '', paidFrom: e.paidFrom || '', by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}), ...this._stamp() },
     }]);
   },
   /**
@@ -821,7 +831,7 @@ export const store = {
     const id = this.backend.newId('expenses');
     this._commit(`Paid out ${category} TSh ${amt.toLocaleString('en-US')} from ${paidFrom}`, [{
       type: 'set', col: 'expenses', id,
-      data: { ts, date: dayKey(ts), category, amount: amt, note, paidFrom, payout: true, by: this.user?.email || '', byName: this.user?.name || '', ...this._stamp() },
+      data: { ts, date: dayKey(ts), category, amount: amt, note, paidFrom, payout: true, by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}), ...this._stamp() },
     }]);
     return id;
   },
@@ -855,7 +865,7 @@ export const store = {
       day, ts: new Date(`${day}T12:00:00`).getTime(), closedAt: Date.now(), openingCash: money(openingCash ?? this.openingCashFor(day)),
       rows, totalDiff, takenOut: money(takenOut), leftInDrawer: money(cashCounted - money(takenOut)),
       count: f.count, total: f.total, creditSales: f.creditSales, payouts: f.payouts, payoutTotal: f.payoutTotal,
-      note, by: this.user?.email || '', byName: this.user?.name || '',
+      note, by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}),
     };
     if (rec.leftInDrawer < 0) throw new Error('More cash taken out than is in the drawer');
     this.backend.write([{ type: 'set', col: 'dayclose', id: day, data: rec }]);
@@ -977,7 +987,7 @@ export const store = {
       data: {
         month, ...f, maintenancePct: num(opts.maintenancePct), otherLabel: opts.otherLabel || '', salaryList: opts.salaryList || [],
         owedByCustomers: this.owedByCustomers(), owedToSuppliers, byPay: pl.byPay || {}, note: opts.note || '',
-        ts: Date.now(), by: this.user?.email || '', byName: this.user?.name || '',
+        ts: Date.now(), by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}),
       },
     });
     ops.push({ type: 'merge', col: 'meta', id: 'settings', data: { salaryList: opts.salaryList || [], maintenancePct: num(opts.maintenancePct), lastClosed: month > (this.settings.lastClosed || '') ? month : this.settings.lastClosed } });
@@ -1183,3 +1193,11 @@ export const store = {
 };
 
 export { monthKey, addMonths };
+
+// ---------- Staff PINs on a shared till ----------
+/** PIN → hash (the PIN itself is never stored). A convenience lock for a shared phone, not a password. */
+export async function hashPin(pin, salt) {
+  const data = new TextEncoder().encode(`shop-manager:${salt}:${String(pin).trim()}`);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}

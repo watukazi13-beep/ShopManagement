@@ -336,7 +336,8 @@ export function salesBreakdown(sales, [from, to], by, itemCategory = () => '') {
 export function shiftExpected(shift, sales = [], payments = [], { cashName = 'Cash' } = {}) {
   const from = num(shift.ts);
   const to = num(shift.closedAt) || Infinity;
-  const mine = (x) => x.by === shift.by && x.ts >= from && x.ts < to;
+  // On a shared till several staff use one account: a shift then counts only its staff member's sales.
+  const mine = (x) => x.by === shift.by && (!shift.staffId || x.staffId === shift.staffId) && x.ts >= from && x.ts < to;
   const isCash = (p) => String(p || '').toLowerCase() === cashName.toLowerCase();
   let cashSales = 0, cashRefunds = 0, otherSales = 0, count = 0;
   for (const s of sales) {

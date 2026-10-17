@@ -835,6 +835,39 @@ with sync_playwright() as p:
     pg.evaluate("import('/js/store.js').then(({ store }) => store.voidSale(store.data.sales.find((x) => x.id === window.__s.id), 'test'))"); pg.wait_for_timeout(400)
     check(abs(item(pg, 'Ream A4 Double A')['stock'] - ream['stock']) < 1e-6, 'cancelling the sale puts the paper back')
 
+    # --- Shared till: staff unlock with a PIN; sales record who sold
+    def add_staff(name, role, pin):
+        go('#/settings'); pg.click('[data-act=staff-add]'); pg.wait_for_timeout(250)
+        dlg().locator('[name=name]').fill(name); dlg().locator('[name=role]').select_option(role)
+        dlg().locator('[name=pin]').fill(pin); dlg().locator('[name=pin2]').fill(pin)
+        submit('Save'); pg.wait_for_timeout(500)
+    def pin_in(digits):
+        for d in digits: pg.locator('#staff-lock [data-d="%s"]' % d).click()
+        pg.wait_for_timeout(500)
+    add_staff('Juma', 'staff', '1234'); add_staff('Asha', 'manager', '5678')
+    staff = data(pg)['meta']['settings'].get('staff', [])
+    check(len(staff) == 2 and all(len(x['pin']) == 64 and x['pin'] not in ('1234', '5678') for x in staff), 'two staff saved; PINs stored only as a hash')
+    go('#/settings'); pg.locator('#till-on').check(); pg.wait_for_timeout(400)
+    check(pg.locator('#staff-lock').is_visible() and 'Who is selling' in pg.locator('#staff-lock').inner_text(), 'shared till on: lock screen asks who is selling')
+    pg.locator('#staff-lock [data-staff]', has_text='Juma').click(); pg.wait_for_timeout(200)
+    pin_in('1235')
+    check('Wrong PIN' in pg.locator('#staff-lock').inner_text(), 'a wrong PIN is refused')
+    pg.screenshot(path=OUT + 'staff-lock.png')
+    pin_in('1234')
+    check(pg.locator('#staff-lock').count() == 0 and pg.locator('#staff-chip').inner_text() == 'Juma', 'right PIN unlocks; the top bar shows Juma')
+    navs = pg.locator('[data-nav]').evaluate_all('els => els.map(e => e.dataset.nav)')
+    check('money' not in navs and 'orders' not in navs, f'Juma (seller) gets the seller menu: {navs}')
+    pg.evaluate("import('/js/store.js').then(({ store }) => { const r = store.data.items.find((i) => i.name === 'Rice'); window.__js = store.recordSale({ lines: [{ itemId: r.id, qty: 1, price: r.price }] }); })"); pg.wait_for_timeout(300)
+    js = pg.evaluate('window.__js')
+    check(js['byName'] == 'Juma' and js.get('staffId'), 'the sale records Juma as the seller')
+    pg.locator('#staff-chip').click(); pg.wait_for_timeout(300)
+    check(pg.locator('#staff-lock').is_visible(), 'tapping the name locks the till to switch staff')
+    pg.locator('#staff-lock [data-staff]', has_text='Asha').click(); pg.wait_for_timeout(200); pin_in('5678')
+    navs = pg.locator('[data-nav]').evaluate_all('els => els.map(e => e.dataset.nav)')
+    check('money' in navs and 'orders' in navs, 'Asha (manager) gets the manager menu')
+    go('#/settings'); pg.locator('#till-on').uncheck(); pg.wait_for_timeout(400)
+    check(pg.locator('#staff-chip').count() == 0 and pg.locator('#staff-lock').count() == 0, 'shared till off again')
+
 
     # --- Dashboard: money position on Home
     go('#/home')
