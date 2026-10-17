@@ -579,3 +579,46 @@ export function bestItemMatch(name, items, min = 0.55) {
 export function lineAmount(l) {
   return l.ordUnit ? num(l.ordQty) * num(l.ordPrice) : num(l.qty) * num(l.cost);
 }
+
+// ---------- Closing the day ----------
+/**
+ * Money that should be in the drawer and on each mobile-money line for one day.
+ * For every payment method: sales + customer payments − refunds − payouts paid from it.
+ * Cash also starts with the cash left in the drawer from the day before.
+ * Credit sales bring in no money that day; they are listed separately.
+ */
+export function dayClose({ day, sales = [], payments = [], expenses = [], methods = ['Cash'], openingCash = 0, creditName = 'Credit' }) {
+  const rows = new Map();
+  const row = (m) => {
+    const k = m || 'Cash';
+    if (!rows.has(k)) rows.set(k, { method: k, sales: 0, payments: 0, refunds: 0, payouts: 0 });
+    return rows.get(k);
+  };
+  for (const m of methods) if (m && m.toLowerCase() !== creditName.toLowerCase()) row(m);
+  const cashName = methods.find((m) => m.toLowerCase() === 'cash') || methods[0] || 'Cash';
+  let creditSales = 0, count = 0, total = 0;
+  for (const s of sales) {
+    if (s.voided || dayKey(s.ts) !== day) continue;
+    if (s.type === 'refund') {
+      if (s.credit) creditSales += num(s.total); else row(s.pay).refunds += -num(s.total);
+      total += num(s.total);
+      continue;
+    }
+    count += 1;
+    total += num(s.total);
+    if (s.credit) creditSales += num(s.total); else row(s.pay).sales += num(s.total);
+  }
+  for (const p of payments) if (dayKey(p.ts) === day) row(p.method).payments += num(p.amount);
+  const payouts = expenses.filter((e) => dayKey(e.ts) === day && e.paidFrom);
+  for (const e of payouts) row(e.paidFrom).payouts += num(e.amount);
+  const out = [...rows.values()].map((r) => {
+    const opening = r.method === cashName ? num(openingCash) : 0;
+    return { ...r, opening, expected: money(opening + r.sales + r.payments - r.refunds - r.payouts) };
+  });
+  return {
+    day, count, total: money(total), creditSales: money(creditSales), cashName,
+    rows: out, payouts: payouts.map((e) => ({ category: e.category, amount: num(e.amount), note: e.note || '', paidFrom: e.paidFrom, byName: e.byName || e.by || '' })),
+    payoutTotal: money(payouts.reduce((t, e) => t + num(e.amount), 0)),
+    expected: money(out.reduce((t, r) => t + r.expected, 0)),
+  };
+}

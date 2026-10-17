@@ -1,5 +1,6 @@
 import { store } from '../store.js';
-import { daySummary, profitAndLoss, monthKey, monthLabel, stockValue, num } from '../calc.js';
+import { daySummary, profitAndLoss, monthKey, monthLabel, stockValue, num, dayKey } from '../calc.js';
+import { todayCard, openPayout, openDayClose, showDayClose } from './dayclose.js';
 import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
 import { showReceipt } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
@@ -40,6 +41,8 @@ export default {
             ${boss ? `<button class="btn ghost" data-act="expense">${icon('money')}Add expense</button>` : ''}
           </div>
         </section>
+
+        ${todayCard()}
 
         ${store.can('settings') && !store.settings.setupDone ? `
         <section class="card soft getting-started">
@@ -123,6 +126,9 @@ export default {
       if (a === 'install-later') { try { localStorage.setItem('install-dismissed', '1'); } catch { /* ignore */ } draw(); }
       if (a === 'receive') openPurchaseForm();
       if (a === 'expense') openExpenseForm();
+      if (a === 'payout') openPayout();
+      if (a === 'dayclose') openDayClose();
+      if (a === 'dayclose-view') showDayClose(store.dayCloseFor(dayKey()));
       if (a === 'notify') Notification.requestPermission().then(draw);
       if (a === 'rfq') {
         const ids = store.generateRfqs();

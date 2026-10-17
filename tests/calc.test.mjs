@@ -242,3 +242,28 @@ assert.equal(bestItemMatch('Bahasha A5', shopItems), null, 'A5 is not A4');
 assert.equal(bestItemMatch('Sellotape Big', shopItems), null, 'big is not small, and not masking tape');
 assert.equal(lineAmount({ ordUnit: 'carton', ordQty: 2, ordPrice: 27000 }), 54000);
 console.log('Order import tests passed');
+
+// Closing the day
+import { dayClose, dayKey } from '../js/calc.js';
+{
+  const t = new Date(2026, 9, 17, 10).getTime();
+  const day = dayKey(t);
+  const dc = dayClose({
+    day, openingCash: 20000, methods: ['Cash', 'M-Pesa', 'Credit'],
+    sales: [
+      { ts: t, total: 10000, pay: 'Cash' }, { ts: t, total: 6000, pay: 'M-Pesa' },
+      { ts: t, total: 4000, pay: 'Credit', credit: true }, { ts: t, total: 3000, pay: 'Cash', voided: true },
+      { ts: t, type: 'refund', total: -2000, pay: 'Cash' }, { ts: t - 86400000, total: 9999, pay: 'Cash' },
+    ],
+    payments: [{ ts: t, amount: 1500, method: 'M-Pesa' }],
+    expenses: [{ ts: t, amount: 3000, category: 'Food', paidFrom: 'Cash' }, { ts: t, amount: 50000, category: 'Rent' }],
+  });
+  const cash = dc.rows.find((r) => r.method === 'Cash'), mp = dc.rows.find((r) => r.method === 'M-Pesa');
+  assert.equal(cash.expected, 20000 + 10000 - 2000 - 3000, 'cash: opening + sales − refund − food payout');
+  assert.equal(mp.expected, 6000 + 1500, 'M-Pesa: sales + customer payment');
+  assert.equal(dc.creditSales, 4000);
+  assert.equal(dc.count, 3, 'voided and other days left out');
+  assert.equal(dc.payoutTotal, 3000, 'only payouts from the till count (rent paid by the owner does not)');
+  assert.equal(dc.rows.some((r) => r.method === 'Credit'), false, 'credit is not a money line');
+}
+console.log('Day close tests passed');

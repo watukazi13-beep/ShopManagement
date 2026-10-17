@@ -114,6 +114,8 @@ function allowed(kind, path, data, old) {
   }
   const recv = db[`shops/${shopId}/meta/settings`]?.staffCanReceive === true;
   if (col === 'sales' && kind === 'set' && !old) return data.by === u.email;
+  if (col === 'expenses' && kind === 'set' && !old) return data.by === u.email && data.payout === true;
+  if (col === 'dayclose' && kind !== 'delete') return data.by === u.email;
   if (col === 'customers' && kind !== 'delete') return true;
   if (col === 'payments' && kind === 'set' && !old) return data.by === u.email;
   if (col === 'shifts' && kind === 'set' && !old) return true;

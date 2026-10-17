@@ -40,6 +40,7 @@ export default {
         <button data-tab="sales">Receipts</button>
         <button data-tab="expenses">Expenses</button>
         <button data-tab="losses">Losses</button>
+        <button data-tab="days">Days</button>
         <button data-tab="customers">Customers</button>
         <button data-tab="quotes">Quotations</button>
       </div>
@@ -67,6 +68,7 @@ export default {
       if (tab === 'report') drawReport(d);
       if (tab === 'expenses') drawExpenses(d);
       if (tab === 'losses') drawLosses(d);
+      if (tab === 'days') drawDays(d);
       if (tab === 'sales') drawSales(d);
       if (tab === 'breakdown') drawBreakdown(d);
     };
@@ -198,7 +200,7 @@ export default {
       body.innerHTML = `
         <div class="row-btns spread"><p>Total: <b>${fmt(total)}</b></p><button class="btn primary" data-act="add-exp">${icon('plus')}Add expense</button></div>
         ${list.length ? `<ul class="rows card">${list.map((x) => `
-          <li class="row tap" data-exp="${x.id}"><div class="grow"><b>${esc(x.category)}</b><small>${fmtDate(x.ts)}${x.note ? ' · ' + esc(x.note) : ''}</small></div><span class="num">${fmt(x.amount)}</span></li>`).join('')}</ul>`
+          <li class="row tap" data-exp="${x.id}"><div class="grow"><b>${esc(x.category)}</b><small>${fmtDate(x.ts)}${x.note ? ' · ' + esc(x.note) : ''}${x.paidFrom ? ' · from ' + esc(x.paidFrom) : ''}${x.payout && x.byName ? ' · ' + esc(x.byName) : ''}</small></div><span class="num">${fmt(x.amount)}</span></li>`).join('')}</ul>`
           : emptyState('No expenses this month', 'Record rent, salaries, transport and other running costs so your net profit is right.')}`;
       body.querySelector('[data-act=add-exp]').onclick = () => openExpenseForm();
       body.querySelectorAll('[data-exp]').forEach((r) => { r.onclick = () => openExpenseForm(list.find((x) => x.id === r.dataset.exp)); });
@@ -237,6 +239,24 @@ export default {
         if (!(await confirmBox(`Clear all ${list.length} stock-loss figures for ${monthLabel(month)} (${lossText(total)})? Stock stays as it is. This cannot be undone.`, { ok: 'Clear all', danger: true }))) return;
         try { done(store.clearAdjustments(list.map((x) => x.id))); } catch (e) { toast(e.message, { kind: 'err' }); }
       });
+    }
+
+    /** Every closed day of the month: sales, pay-outs and whether the money matched. */
+    function drawDays(d) {
+      const [a, b] = monthRange(month);
+      const list = (d.dayclose || []).filter((x) => x.ts >= a && x.ts < b).sort((x, y) => (x.id < y.id ? 1 : -1));
+      const short = list.reduce((t, x) => t + Math.min(0, num(x.totalDiff)), 0);
+      const over = list.reduce((t, x) => t + Math.max(0, num(x.totalDiff)), 0);
+      const today = dayKey();
+      body.innerHTML = `
+        <div class="row-btns spread"><p>${list.length} day${list.length === 1 ? '' : 's'} closed${short ? ` · <span class="neg">short ${fmt(-short)}</span>` : ''}${over ? ` · <span class="up">over ${fmt(over)}</span>` : ''}</p>
+          <button class="btn primary" data-act="close-today">${icon('check')}${(d.dayclose || []).some((x) => x.id === today) ? 'Close today again' : 'Close today'}</button></div>
+        ${list.length ? `<ul class="rows card">${list.map((x) => `
+          <li class="row tap" data-day="${x.id}"><div class="grow"><b>${fmtDate(x.ts)}</b><small>${x.count} receipts · ${fmt(x.total)} sales · ${fmt(x.payoutTotal || 0)} paid out · by ${esc(x.byName || x.by)}</small></div>
+            <span class="pill ${x.totalDiff < 0 ? 'bad' : x.totalDiff > 0 ? 'warn' : 'good'}">${x.totalDiff === 0 ? 'Matches' : `${x.totalDiff > 0 ? 'Over' : 'Short'} ${fmt(Math.abs(x.totalDiff))}`}</span></li>`).join('')}</ul>`
+          : emptyState('No days closed this month', 'At the end of each day, count the cash and mobile money with “Close the day”.')}`;
+      body.querySelector('[data-act=close-today]').onclick = () => import('./dayclose.js').then((m) => m.openDayClose());
+      body.querySelectorAll('[data-day]').forEach((r) => { r.onclick = () => import('./dayclose.js').then((m) => m.showDayClose(list.find((x) => x.id === r.dataset.day))); });
     }
 
     function drawSales(d) {
@@ -304,6 +324,7 @@ export function openExpenseForm(x = null) {
       ${field('Category', `<input name="category" list="exp-cats" required value="${esc(x?.category || '')}" placeholder="e.g. Rent"><datalist id="exp-cats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`)}
       <div class="chips wrap" id="exp-chips">${cats.map((c) => `<button type="button" class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
       ${field('Date', `<input name="date" type="date" required value="${toInputDate(x?.ts || Date.now())}">`)}
+      ${field('Paid from', `<select name="paidFrom"><option value="">Owner / bank — not from the till</option>${(store.settings.payMethods || ['Cash']).filter((m) => !store.isCreditPay(m)).map((m) => `<option ${x?.paidFrom === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>`, 'Paid from the till or a mobile-money line? It is then taken off when the day is closed.')}
       ${field('Note (optional)', `<input name="note" value="${esc(x?.note || '')}">`)}`,
     actions: `${x && store.can('clear') ? '<button type="button" class="btn ghost danger" data-del>Delete</button>' : ''}<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Save</button>`,
     onMount: (dlg, close) => {
@@ -320,7 +341,7 @@ export function openExpenseForm(x = null) {
     },
     onSubmit: (v) => {
       const ts = fromInputDate(v.date);
-      store.saveExpense({ id: x?.id, ts, category: v.category.trim(), amount: v.amount, note: v.note });
+      store.saveExpense({ id: x?.id, ts, category: v.category.trim(), amount: v.amount, note: v.note, paidFrom: v.paidFrom });
       pastCache.delete(monthKey(ts));
       if (x) pastCache.delete(monthKey(x.ts));
       toast('Expense saved');

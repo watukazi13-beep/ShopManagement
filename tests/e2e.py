@@ -785,6 +785,36 @@ with sync_playwright() as p:
     open_history(); undo_row('Stock adjusted: Rice +5')
     check(item(pg, 'Rice')['stock'] == rice0 - 1, f"undo the +5: rice {rice0} + 5 − 1 − 5 = {rice0 - 1} (the sale is kept)")
 
+    # --- Pay out from the till and close the day
+    go('#/home')
+    check(pg.locator('.day-card').count() == 1, "Home shows Today's money with Close the day")
+    pg.locator('.day-card [data-act=payout]').click(); pg.wait_for_timeout(250)
+    dlg().locator('[name=amount]').fill('3000'); dlg().locator('label.chip', has_text='Food').click(); dlg().locator('[name=note]').fill('lunch for 2 staff')
+    submit('Save pay-out'); pg.wait_for_timeout(400)
+    po_x = [x for x in data(pg)['expenses'].values() if x.get('payout')]
+    check(len(po_x) == 1 and po_x[0]['amount'] == 3000 and po_x[0]['paidFrom'] == 'Cash' and po_x[0]['category'] == 'Food', 'pay-out saved as a Food expense paid from Cash')
+    pg.evaluate("import('/js/store.js').then(({ store }) => store.dayFigures()).then((f) => { window.__dc = f; })"); pg.wait_for_timeout(200)
+    dcf = pg.evaluate('window.__dc')
+    cash_exp = next(r for r in dcf['rows'] if r['method'] == 'Cash')['expected']
+    pg.locator('.day-card [data-act=dayclose]').click(); pg.wait_for_timeout(300)
+    check('Should be' in dlg().inner_text() and 'M-Pesa' in dlg().inner_text(), 'Close the day lists every money line')
+    dlg().locator('tr[data-m="Cash"] .dc-count').fill(str(cash_exp - 2000)); dlg().locator('tr[data-m="Cash"] .dc-count').dispatch_event('input')
+    check('Short' in dlg().locator('tr[data-m="Cash"] .dc-diff').inner_text(), 'counting 2,000 less shows Short')
+    dlg().locator('[name=takenOut]').fill('1000'); dlg().locator('[name=takenOut]').dispatch_event('input')
+    pg.screenshot(path=OUT + 'dayclose.png')
+    submit('Close the day'); pg.wait_for_timeout(500)
+    rec = list(data(pg).get('dayclose', {}).values())
+    check(len(rec) == 1 and rec[0]['totalDiff'] == -2000 and rec[0]['leftInDrawer'] == cash_exp - 3000 and rec[0]['payoutTotal'] == 3000, f"day closed: short 2,000, left in drawer {cash_exp - 3000:,}")
+    check('Left in the drawer' in dlg().inner_text(), 'closing summary opens (print / WhatsApp)')
+    dlg().locator('[data-wa]').click(); pg.wait_for_timeout(200)
+    check('END%20OF%20DAY' in pg.evaluate('window.__opened')[-1], 'end-of-day summary shared on WhatsApp')
+    if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+    check('Closed' in pg.locator('.day-card').inner_text(), 'Home shows the day as closed')
+    go('#/money?tab=days'); pg.wait_for_timeout(300)
+    check('Short' in pg.locator('#money-body').inner_text(), 'Money → Days lists the closed day')
+    pg.evaluate("import('/js/store.js').then(({ store }) => { const d = new Date(); d.setDate(d.getDate() + 1); window.__open2 = store.openingCashFor(d.toISOString().slice(0, 10)); })"); pg.wait_for_timeout(200)
+    check(pg.evaluate('window.__open2') == cash_exp - 3000, "tomorrow starts with the cash left in the drawer")
+
 
     # --- Dashboard: money position on Home
     go('#/home')

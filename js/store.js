@@ -1,7 +1,7 @@
 // App state + every action that changes data.
 import {
   DAY, monthLabel, averageCost, cartTotals, dayKey, docNo, draftRfqs, monthKey, monthRange, addMonths, num, money, reorderPlan, onOrderQty,
-  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing, unitPrice, inPacks, lineAmount, normUnit, normName,
+  stockValue, profitAndLoss, daySummary, parseDiscount, taxIncluded, refundTotals, shiftExpected, weekKey, monthClosing, unitPrice, inPacks, lineAmount, normUnit, normName, dayClose,
 } from './calc.js';
 
 export const DEFAULT_SETTINGS = {
@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS = {
   expenseCategories: ['Rent', 'Salaries', 'Electricity', 'Water', 'Transport', 'Airtime & Internet', 'Taxes & Licences', 'Repairs', 'Other'],
   payMethods: ['Cash', 'M-Pesa', 'Tigo Pesa', 'Airtel Money', 'Card', 'Credit'],
   staffCanReceive: false,
+  payoutCategories: ['Food', 'Transport', 'Airtime', 'Cleaning', 'Other'],
   taxRate: 0,
   taxName: 'VAT',
   receiptHeader: '',
@@ -38,7 +39,7 @@ export const DEFAULT_SETTINGS = {
   poNote: 'Please supply the items below. Quote this order number on your delivery note and invoice.',
 };
 
-const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments', 'shifts'];
+const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments', 'shifts', 'dayclose'];
 const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers', 'closings', 'quotes'];
 const CHANGES_DAYS = 60; // change history (with Undo) kept on screen for this many days
 const STAMP_FIELDS = new Set(['updatedAt', 'updatedBy']);
@@ -57,7 +58,7 @@ export const store = {
   pending: false,
   online: navigator.onLine,
   since: 0,
-  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], closings: [], quotes: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [], changes: [] },
+  data: { items: [], suppliers: [], rfqs: [], pos: [], customers: [], closings: [], quotes: [], sales: [], purchases: [], adjustments: [], expenses: [], payments: [], shifts: [], dayclose: [], changes: [] },
   settings: { ...DEFAULT_SETTINGS },
   _loaded: new Set(),
   _subs: new Set(),
@@ -794,8 +795,59 @@ export const store = {
     const ts = e.ts || Date.now();
     this.backend.write([{
       type: 'set', col: 'expenses', id,
-      data: { ts, date: dayKey(ts), category: e.category || 'Other', amount: money(e.amount), note: e.note || '', by: this.user?.email || '', ...this._stamp() },
+      data: { ts, date: dayKey(ts), category: e.category || 'Other', amount: money(e.amount), note: e.note || '', paidFrom: e.paidFrom || '', by: this.user?.email || '', byName: this.user?.name || '', ...this._stamp() },
     }]);
+  },
+  /**
+   * Money paid out during the day — staff food, transport, airtime… — from the cash drawer or a
+   * mobile-money line. Anyone working in the shop can record it; it counts as an expense and is
+   * taken off what should be in the drawer when the day is closed.
+   */
+  payout({ amount, category = 'Other', note = '', paidFrom = 'Cash', ts = Date.now() }) {
+    const amt = money(amount);
+    if (!(amt > 0)) throw new Error('Enter the amount paid out');
+    const id = this.backend.newId('expenses');
+    this._commit(`Paid out ${category} TSh ${amt.toLocaleString('en-US')} from ${paidFrom}`, [{
+      type: 'set', col: 'expenses', id,
+      data: { ts, date: dayKey(ts), category, amount: amt, note, paidFrom, payout: true, by: this.user?.email || '', byName: this.user?.name || '', ...this._stamp() },
+    }]);
+    return id;
+  },
+
+  // ---------- Closing the day ----------
+  dayCloseFor(day) { return this.data.dayclose.find((d) => d.id === day) || null; },
+  /** Cash left in the drawer at the last close before `day` — tomorrow's starting cash. */
+  openingCashFor(day) {
+    const prev = this.data.dayclose.filter((d) => d.id < day).sort((a, b) => (a.id < b.id ? 1 : -1))[0];
+    return prev ? num(prev.leftInDrawer) : num(this.settings.drawerFloat);
+  },
+  dayFigures(day = dayKey(), openingCash = this.openingCashFor(day)) {
+    return dayClose({
+      day, sales: this.data.sales, payments: this.data.payments, expenses: this.data.expenses,
+      methods: this.settings.payMethods || ['Cash'], openingCash,
+      creditName: (this.settings.payMethods || []).find((m) => this.isCreditPay(m)) || 'Credit',
+    });
+  },
+  /** Save the day's count: counted = { Cash: 52000, 'M-Pesa': 18000, … }. Closing again replaces it. */
+  closeDay(day, { counted = {}, openingCash, takenOut = 0, note = '' }) {
+    const f = this.dayFigures(day, openingCash);
+    const rows = f.rows.map((r) => {
+      const c = counted[r.method];
+      const has = c !== undefined && c !== '' && c !== null;
+      return { ...r, counted: has ? money(c) : null, difference: has ? money(money(c) - r.expected) : null };
+    });
+    const totalDiff = money(rows.reduce((t, r) => t + (r.difference || 0), 0));
+    const cash = rows.find((r) => r.method === f.cashName);
+    const cashCounted = cash?.counted ?? cash?.expected ?? 0;
+    const rec = {
+      day, ts: new Date(`${day}T12:00:00`).getTime(), closedAt: Date.now(), openingCash: money(openingCash ?? this.openingCashFor(day)),
+      rows, totalDiff, takenOut: money(takenOut), leftInDrawer: money(cashCounted - money(takenOut)),
+      count: f.count, total: f.total, creditSales: f.creditSales, payouts: f.payouts, payoutTotal: f.payoutTotal,
+      note, by: this.user?.email || '', byName: this.user?.name || '',
+    };
+    if (rec.leftInDrawer < 0) throw new Error('More cash taken out than is in the drawer');
+    this.backend.write([{ type: 'set', col: 'dayclose', id: day, data: rec }]);
+    return { ...rec, id: day };
   },
   deleteExpense(id) {
     if (!this.can('clear')) throw new Error('Only the owner, or a manager the owner has allowed, can delete expenses');

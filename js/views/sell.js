@@ -112,7 +112,9 @@ export default {
       el.querySelector('#pos-tools').innerHTML = `
         ${shifts && !sh ? `<div class="banner warn grow">No shift open. <button type="button" class="btn primary small" data-shift>Open shift</button></div>` : ''}
         ${held.length ? `<button type="button" class="btn ghost small" data-held>Held sales <span class="count">${held.length}</span></button>` : ''}
-        ${shifts && sh ? `<button type="button" class="btn ghost small" data-shift>Shift · since ${fmtTime(sh.ts)}</button>` : ''}`;
+        ${shifts && sh ? `<button type="button" class="btn ghost small" data-shift>Shift · since ${fmtTime(sh.ts)}</button>` : ''}
+        <button type="button" class="btn ghost small" data-payout>${icon('cash')}Pay out</button>
+        <button type="button" class="btn ghost small" data-dayclose>${icon('check')}Close day</button>`;
     };
     const draw = () => { drawTools(); drawTiles(); drawCart(); };
 
@@ -152,6 +154,8 @@ export default {
       if (d.quote !== undefined) return import('./quotes.js').then((m) => m.quoteFromCart(cart.filter((l) => store.item(l.itemId)), { onSaved: () => { cart = []; saveCart(); el.querySelector('.pos').classList.remove('show-cart'); draw(); } }));
       if (d.held !== undefined) return openHeld();
       if (d.shift !== undefined) return openShiftPanel();
+      if (d.payout !== undefined) return import('./dayclose.js').then((m) => m.openPayout());
+      if (d.dayclose !== undefined) return import('./dayclose.js').then((m) => m.openDayClose());
       if (d.charge !== undefined) return checkout();
       if (t.id === 'cart-bar') { el.querySelector('.pos').classList.add('show-cart'); return; }
     });

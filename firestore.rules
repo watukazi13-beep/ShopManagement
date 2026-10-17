@@ -122,6 +122,17 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Money paid out from the till (staff food, transport…) and closing the day: anyone working
+      // in the shop, under their own name. Changing or deleting them is for the owner/managers.
+      match /expenses/{id} {
+        allow create: if isMember() && request.resource.data.by == myEmail() && request.resource.data.payout == true;
+      }
+      match /dayclose/{id} {
+        allow read: if isMember();
+        allow create, update: if isMember() && request.resource.data.by == myEmail();
+        allow delete: if canClear();
+      }
+
       // Customers: sellers add them at the till and their credit sales change the balance.
       match /customers/{id} {
         allow read, create, update: if isMember();
