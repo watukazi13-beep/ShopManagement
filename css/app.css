@@ -982,3 +982,5 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 .pin-pad .ic { width: 22px; height: 22px; }
 .staff-chip { border: 1px solid var(--line); background: var(--green-2); color: var(--green); border-radius: 999px; padding: 5px 10px; font: inherit; font-size: .8rem; font-weight: 700; cursor: pointer; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .field.inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.backup-due { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.backup-due .grow small { display: block; color: var(--muted); }

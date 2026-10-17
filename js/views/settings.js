@@ -8,6 +8,7 @@ import { openSetup } from './setup.js';
 import { getTheme, setTheme } from '../theme.js';
 import { openChanges } from './changes.js';
 import { tillCard, wireTillCard } from './staff.js';
+import { backupCard, downloadFullBackup, openRestore } from './backup.js';
 
 export default {
   title: 'Settings',
@@ -115,11 +116,7 @@ export default {
           <div class="row-btns"><button class="btn primary">Save settings</button></div>
         </form>
 
-        <section class="card">
-          <div class="card-head"><h2>Backup</h2></div>
-          <p class="muted small">Download everything loaded on this device (items, suppliers and the last two months of records) as a file.</p>
-          <button class="btn ghost" data-act="backup">${icon('download')}Download backup</button>
-        </section>` : ''}
+        ${backupCard()}` : ''}
 
         <section class="card about">
           <div class="card-head"><h2>About</h2></div>
@@ -163,7 +160,8 @@ export default {
       const a = e.target.closest('[data-act]')?.dataset.act;
       if (a === 'signout') { if (await confirmBox('Sign out of this device?', { ok: 'Sign out' })) { await store.backend.signOut(); history.replaceState(null, '', '#/home'); location.reload(); } }
       if (a === 'notify') { await Notification.requestPermission(); draw(); }
-      if (a === 'backup') downloadFile(`shop-backup-${new Date().toISOString().slice(0, 10)}.json`, store.exportJson(), 'application/json');
+      if (a === 'backup' || a === 'backup-full') downloadFullBackup().then(() => draw());
+      if (a === 'restore') openRestore();
       if (a === 'connect') openConnect();
       if (a === 'install') installApp();
       if (a === 'setup') openSetup();

@@ -213,6 +213,17 @@ with sync_playwright() as p:
         pg.click('#brand'); pg.wait_for_timeout(250); dlg().locator('[data-pick]', has_text='Main').click(); pg.wait_for_timeout(1500)
     check('8,000' in pg.locator('.hero-figure').inner_text(), 'management sees today’s sales including the seller’s')
     check('1,600' in pg.locator('.hero-sub').inner_text(), 'and the gross profit TSh 1,600')
+    pg.wait_for_timeout(7000)
+    snaps = [k for k in fs() if k.startswith(f'shops/{main}/snapshots/')]
+    check(len(snaps) == 1, f'daily snapshot of items, customers and suppliers saved ({snaps})')
+    unga_price = next(i for i in docs(main, 'items') if i['name'] == 'Unga 2kg')['price']
+    pg.evaluate("import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js').then(() => import('/js/store.js')).then(({ store }) => { const u = store.data.items.find((i) => i.name === 'Unga 2kg'); store.saveItem({ ...u, price: 1 }); })"); pg.wait_for_timeout(500)
+    go('#/settings'); pg.click('[data-act=restore]'); pg.wait_for_timeout(800)
+    dlg().locator('[data-snap]').first.click(); pg.wait_for_timeout(500)
+    dlg().get_by_role('button', name='Restore', exact=True).click(); pg.wait_for_timeout(300)
+    dlg().get_by_role('button', name='Restore', exact=True).click(); pg.wait_for_timeout(800)
+    check(next(i for i in docs(main, 'items') if i['name'] == 'Unga 2kg')['price'] == unga_price, f'restore from the daily snapshot puts the price back ({unga_price})')
+    if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
     go('#/settings')
     pg.check('#shop-form [name=staffCanReceive]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(400)
     check(fs()[f'shops/{main}/meta/settings'].get('staffCanReceive') is True, 'sellers allowed to receive deliveries')

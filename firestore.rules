@@ -127,6 +127,10 @@ service cloud.firestore {
       match /expenses/{id} {
         allow create: if isMember() && request.resource.data.by == myEmail() && request.resource.data.payout == true;
       }
+      // Daily snapshots of items, customers, suppliers and settings (for Restore).
+      match /snapshots/{id} {
+        allow read, create, update, delete: if isBoss();
+      }
       match /dayclose/{id} {
         allow read: if isMember();
         allow create, update: if isMember() && request.resource.data.by == myEmail();

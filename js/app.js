@@ -329,6 +329,7 @@ async function boot() {
     if (!checked && store.ready && shell) {
       checked = true;
       setTimeout(() => store.dailyLowStockCheck(), 2000);
+      setTimeout(() => store.dailySnapshot().catch((e) => console.warn('snapshot', e)), 6000);
       offerTrialData();
     }
   });

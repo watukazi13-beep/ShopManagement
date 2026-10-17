@@ -868,6 +868,26 @@ with sync_playwright() as p:
     go('#/settings'); pg.locator('#till-on').uncheck(); pg.wait_for_timeout(400)
     check(pg.locator('#staff-chip').count() == 0 and pg.locator('#staff-lock').count() == 0, 'shared till off again')
 
+    # --- Full backup and restore from the file
+    go('#/home')
+    check(pg.locator('.backup-due').count() == 1, 'Home reminds the owner to make a full backup')
+    with pg.expect_download() as dl:
+        pg.locator('.backup-due [data-act=backup-full]').click()
+    bk = json.loads(open(dl.value.path(), encoding='utf-8').read())
+    check(len(bk['items']) == len(data(pg)['items']) and len(bk['sales']) >= 1 and 'settings' in bk, f"full backup file: {len(bk['items'])} items, {len(bk['sales'])} sales")
+    pg.wait_for_timeout(400)
+    check(data(pg)['meta']['settings'].get('lastBackupAt') and pg.locator('.backup-due').count() == 0, 'backup recorded; the reminder goes away')
+    rice_price = item(pg, 'Rice')['price']
+    pg.evaluate("import('/js/store.js').then(({ store }) => { const r = store.data.items.find((i) => i.name === 'Rice'); store.saveItem({ ...r, price: 1 }); })"); pg.wait_for_timeout(300)
+    check(item(pg, 'Rice')['price'] == 1, 'a wrong price was saved (Rice = 1)')
+    stock_now = item(pg, 'Rice')['stock']
+    go('#/settings'); pg.click('[data-act=restore]'); pg.wait_for_timeout(400)
+    dlg().locator('#rs-file').set_input_files(files=[{'name': 'backup.json', 'mimeType': 'application/json', 'buffer': json.dumps(bk).encode()}]); pg.wait_for_timeout(300)
+    check('items' in dlg().locator('#rs-pick').inner_text(), 'restore shows what is in the file')
+    submit('Restore'); pg.wait_for_timeout(250)
+    dlg().get_by_role('button', name='Restore', exact=True).click(); pg.wait_for_timeout(600)
+    check(item(pg, 'Rice')['price'] == rice_price and item(pg, 'Rice')['stock'] == stock_now, f'restore puts the price back ({rice_price}) and keeps today\'s stock')
+
 
     # --- Dashboard: money position on Home
     go('#/home')

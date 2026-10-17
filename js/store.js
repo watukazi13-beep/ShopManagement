@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS = {
 
 const HISTORY = ['sales', 'purchases', 'adjustments', 'expenses', 'payments', 'shifts', 'dayclose'];
 const MASTER = ['items', 'suppliers', 'rfqs', 'pos', 'customers', 'closings', 'quotes'];
+const BACKUP_COLS = ['items', 'suppliers', 'rfqs', 'pos', 'customers', 'closings', 'quotes', 'sales', 'purchases', 'adjustments', 'expenses', 'payments', 'shifts', 'dayclose'];
 const CHANGES_DAYS = 60; // change history (with Undo) kept on screen for this many days
 const STAMP_FIELDS = new Set(['updatedAt', 'updatedBy']);
 
@@ -1189,6 +1190,81 @@ export const store = {
   // ---------- Backup ----------
   exportJson() {
     return JSON.stringify({ exportedAt: new Date().toISOString(), settings: this.settings, ...this.data }, null, 1);
+  },
+
+  // ---------- Backups ----------
+  /** Everything in the shop (all months, not just what is loaded) as one backup object. */
+  async fullBackup() {
+    const out = { app: 'Shop Manager', version: 2, shop: this.shop?.name || this.settings.shopName || '', exportedAt: new Date().toISOString(), settings: this.settings };
+    for (const col of [...BACKUP_COLS]) {
+      try { out[col] = await this.backend.getAll(col); } catch { out[col] = this.data[col] || []; }
+    }
+    return out;
+  },
+  /** Record that a full backup was saved (for the weekly reminder). */
+  markBackup() { this.saveSettings({ lastBackupAt: Date.now(), lastBackupBy: this.user?.email || '' }); },
+  backupDue() { return Date.now() - num(this.settings.lastBackupAt) > 7 * DAY; },
+
+  /**
+   * Once a day, the first owner/manager device online keeps a snapshot of items, customers, suppliers
+   * and settings in the shop's own records (14 kept), so a bad import or mass change can be rolled back.
+   */
+  async dailySnapshot() {
+    if (!this.can('orders') || this.mode !== 'firebase' || !this.online) return;
+    const day = dayKey();
+    if (this.settings.lastSnapshot === day) return;
+    const doc = { items: this.data.items, customers: this.data.customers, suppliers: this.data.suppliers, settings: { ...this.settings, staff: undefined } };
+    const json = JSON.stringify(doc);
+    if (json.length > 900_000) return; // very large shops: rely on the downloaded backups
+    await this.backend.write([
+      { type: 'set', col: 'snapshots', id: day, data: { ts: Date.now(), day, json, counts: { items: doc.items.length, customers: doc.customers.length, suppliers: doc.suppliers.length }, by: this.user?.email || '' } },
+      { type: 'merge', col: 'meta', id: 'settings', data: { lastSnapshot: day } },
+    ]);
+    const all = (await this.backend.getAll('snapshots')).sort((a, b) => (a.id < b.id ? 1 : -1));
+    const old = all.slice(14).map((x) => ({ type: 'delete', col: 'snapshots', id: x.id }));
+    if (old.length) this.backend.write(old);
+  },
+  async listSnapshots() {
+    const all = await this.backend.getAll('snapshots');
+    return all.map(({ json, ...x }) => x).sort((a, b) => (a.id < b.id ? 1 : -1));
+  },
+  async getSnapshot(id) {
+    const d = await this.backend.getDoc('snapshots', id);
+    return d ? JSON.parse(d.json) : null;
+  },
+  /**
+   * Put items, customers, suppliers (and optionally settings) back as they were in a backup.
+   * Stock quantities are kept as they are now unless `withStock`; records added since are kept.
+   * Sales and other history from a backup file are added only where missing, never overwritten.
+   */
+  restoreFrom(src, { items = true, withStock = false, customers = true, suppliers = true, settings = false, history = false } = {}) {
+    if (!this.can('clear')) throw new Error('Only the owner, or a manager the owner has allowed, can restore');
+    const ops = [];
+    const strip = ({ id, ...d }) => d;
+    if (items) for (const it of src.items || []) {
+      const cur = this.item(it.id) || this.data.items.find((x) => x.id === it.id);
+      const data = strip(it);
+      if (!withStock && cur) data.stock = cur.stock;
+      ops.push({ type: 'set', col: 'items', id: it.id, data });
+    }
+    if (customers) for (const c of src.customers || []) {
+      const cur = this.customer(c.id);
+      ops.push({ type: 'set', col: 'customers', id: c.id, data: { ...strip(c), ...(cur ? { balance: cur.balance, spent: cur.spent } : {}) } });
+    }
+    if (suppliers) for (const x of src.suppliers || []) ops.push({ type: 'set', col: 'suppliers', id: x.id, data: strip(x) });
+    if (settings && src.settings) {
+      const { staff, lastSnapshot, lastBackupAt, ...rest } = src.settings;
+      ops.push({ type: 'merge', col: 'meta', id: 'settings', data: rest });
+    }
+    if (history) {
+      for (const col of HISTORY) {
+        const have = new Set((this.data[col] || []).map((d) => d.id));
+        for (const d of src[col] || []) if (d?.id && !have.has(d.id)) ops.push({ type: 'set', col, id: d.id, data: strip(d) });
+      }
+    }
+    if (!ops.length) throw new Error('Nothing to restore in this backup');
+    this._commit(`Restored from backup${src.exportedAt ? ` of ${String(src.exportedAt).slice(0, 10)}` : src.day ? ` of ${src.day}` : ''}`, ops);
+    return ops.length;
   },
 };
 
