@@ -1,6 +1,6 @@
 // Service worker: makes the app open and work with no internet.
 // Bump VERSION whenever app files change so devices pick up the update.
-const VERSION = 'v33';
+const VERSION = 'v34';
 const CACHE = `shop-${VERSION}`;
 const APP_FILES = [
   './',
@@ -32,6 +32,7 @@ const APP_FILES = [
   './js/views/dayclose.js',
   './js/views/staff.js',
   './js/views/backup.js',
+  './js/views/pricing.js',
   './js/views/money.js',
   './js/views/settings.js',
   './js/views/manage.js',

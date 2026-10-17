@@ -256,7 +256,9 @@ export function openItemForm(item = null) {
       v.buyUnit = buyUnit; v.packSize = packSize;
       if (!variablePrice && v.price === '') throw new Error('Enter a selling price, or tick “Price is entered at the time of sale”');
       store.saveItem({ ...v, price: variablePrice ? 0 : v.price, id: item?.id, service: v.service === 'on', variablePrice });
-      toast(item ? 'Changes saved' : `${v.name} added`);
+      const costNow = num(v.cost), priceNow = num(v.price);
+      if (!variablePrice && v.service !== 'on' && costNow > 0 && priceNow > 0 && costNow >= priceNow) toast(`${v.name}: cost ${fmt(costNow)} is not below the price ${fmt(priceNow)} — you would sell at a loss. If the cost is per carton or box, set “How you buy it” instead.`, { kind: 'warn', ms: 9000 });
+      else toast(item ? 'Changes saved' : `${v.name} added`);
     },
   });
 }

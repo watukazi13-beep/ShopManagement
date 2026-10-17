@@ -42,8 +42,12 @@ with sync_playwright() as p:
     def dlg():
         return pg.locator('dialog[open]').last
 
-    def submit(label):
+    def submit(label, review=False):
         dlg().get_by_role('button', name=label, exact=True).click(); pg.wait_for_timeout(250)
+        if label in ('Receive into stock', 'Add to stock') and not review:
+            pg.wait_for_timeout(450)  # a dearer delivery opens Prices to review; most steps here don't test it
+            pr = pg.locator('dialog[open]', has_text='Prices to review')
+            if pr.count(): pr.locator('button:has-text("Keep prices")').click(); pg.wait_for_timeout(250)
 
     pg.goto(URL); pg.wait_for_timeout(500)
     credit = 'Developed by Greenlight Developers · Author: Michael Kepha'
@@ -182,10 +186,15 @@ with sync_playwright() as p:
     d.locator('[name=paid]').uncheck()
     pg.wait_for_timeout(100)
     check('28,000' in d.locator('#pf-total').inner_text(), 'purchase total TSh 28,000')
-    submit('Add to stock')
+    submit('Add to stock', review=True)
     s = item(pg, 'Sugar 1kg')
     check(s['stock'] == 27 and abs(s['cost'] - 2611.11) < 0.01 and s['lastCost'] == 2800, f"receive stock: 27 in stock, avg cost {s['cost']:.2f}")
     check('28,000' in pg.locator('.row-btns.spread').inner_text(), 'unpaid supplier balance shown')
+    pg.wait_for_timeout(700)
+    check('Prices to review' in dlg().inner_text() and 'Sugar 1kg' in dlg().inner_text(), 'sugar arrived dearer (2,500 → 2,800): Prices to review opens')
+    sugar_price = s['price']
+    dlg().locator('button:has-text("Keep prices")').click(); pg.wait_for_timeout(300)
+    check(item(pg, 'Sugar 1kg')['price'] == sugar_price, 'Keep prices leaves the selling price as it was')
 
     # --- Expense
     go('#/money?tab=expenses')
@@ -887,6 +896,21 @@ with sync_playwright() as p:
     submit('Restore'); pg.wait_for_timeout(250)
     dlg().get_by_role('button', name='Restore', exact=True).click(); pg.wait_for_timeout(600)
     check(item(pg, 'Rice')['price'] == rice_price and item(pg, 'Rice')['stock'] == stock_now, f'restore puts the price back ({rice_price}) and keeps today\'s stock')
+
+    # --- Goods arrive dearer: review prices
+    rice = item(pg, 'Rice')
+    go('#/orders?tab=received'); pg.locator('[data-act=receive]').first.click(); pg.wait_for_timeout(300)
+    r0 = dlg().locator('.line-row').first
+    r0.locator('.li-name').fill('Rice'); r0.locator('.li-name').dispatch_event('change'); r0.locator('.li-qty').fill('10')
+    new_cost = round(rice['lastCost'] * 1.25)
+    r0.locator('.li-cost').fill(str(new_cost)); r0.locator('.li-cost').dispatch_event('input')
+    submit('Add to stock', review=True); pg.wait_for_timeout(900)
+    check('Prices to review' in dlg().inner_text() and 'Rice' in dlg().inner_text(), f'receiving rice 25% dearer ({new_cost:,}) opens Prices to review')
+    sug = int(dlg().locator('.pr-new').first.input_value())
+    check(sug > rice['price'] and sug % 50 == 0, f"suggested price {sug:,} keeps the margin (was {rice['price']:,})")
+    pg.screenshot(path=OUT + 'price-review.png')
+    submit('Update ticked prices'); pg.wait_for_timeout(400)
+    check(item(pg, 'Rice')['price'] == sug, 'price updated after the dearer delivery')
 
 
     # --- Dashboard: money position on Home

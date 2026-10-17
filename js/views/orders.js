@@ -1,6 +1,7 @@
 import { store } from '../store.js';
 import { num, DAY, docNo, packsText, packInfo, inPacks, orderQtyText, packRule, plural, unitPrice, lineAmount, parseOrderRows, bestItemMatch, normName } from '../calc.js';
 import { layoutFor, visibleColumns, openLayoutEditor } from './doclayout.js';
+import { reviewPrices, costsBefore } from './pricing.js';
 import { esc, fmt, fmtQty, fmtDate, icon, modal, toast, field, emptyState, confirmBox, printHtml, toInputDate, fromInputDate, parseCsv } from '../ui.js';
 
 const STATUS = { draft: ['Draft', ''], sent: ['Sent', 'warn'], quoted: ['Quote received', 'good'], ordered: ['PO created', 'good'], closed: ['Goods received', 'good'] };
@@ -342,7 +343,9 @@ export function openPurchaseForm({ rfq = null } = {}) {
     onSubmit: (v, { form }) => {
       const lines = readLines(form);
       const ts = fromInputDate(v.date);
+      const review = costsBefore(lines.map((l) => ({ itemId: l.itemId, newCost: l.cost })));
       store.receivePurchase({ supplierId: v.supplierId, ref: v.ref, ts, lines, paid: v.paid === 'on', note: v.note, rfqId: rfq?.id || '' });
+      reviewPrices(review);
       toast('Stock received and costs updated');
     },
   });
@@ -908,7 +911,9 @@ export function openReceivePo(id) {
           remember: !!tr.querySelector('.rv-remember')?.checked, inPacks: r.pack && per > 1,
         });
       }
+      const review = costsBefore(receipts.map((r) => ({ itemId: po.lines[r.idx].itemId, newCost: r.cost })));
       store.receivePo(po, receipts, { ts: fromInputDate(v.date), ref: v.ref, paid: v.paid === 'on', closeShort: v.closeShort === 'on' });
+      reviewPrices(review);
       const n = receipts.length;
       toast(n ? `${n} item${n > 1 ? 's' : ''} received — stock updated` : 'Order closed');
     },

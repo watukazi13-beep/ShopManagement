@@ -984,3 +984,8 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 .field.inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .backup-due { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .backup-due .grow small { display: block; color: var(--muted); }
+.pr-table input.pr-new { width: 92px; min-height: 38px; padding: 6px 6px; text-align: right; font-variant-numeric: tabular-nums; }
+.pr-table td.num { white-space: nowrap; }
+.pr-table th, .pr-table td { padding-left: 6px; padding-right: 6px; }
+.pr-table td small { display: block; color: var(--muted); font-size: .74rem; }
+.pr-table td.neg { color: var(--bad); font-weight: 700; }

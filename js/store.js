@@ -281,6 +281,11 @@ export const store = {
     return ops.length;
   },
   /** Rename item categories: pairs of [old, new] (same new name merges them). */
+  /** New selling prices for several items at once (e.g. after a dearer delivery). */
+  setPrices(changes) {
+    const ops = changes.map((c) => ({ type: 'merge', col: 'items', id: c.id, data: { price: money(c.price), variablePrice: false, ...this._stamp() } }));
+    this._commit(`Updated ${ops.length} selling price${ops.length === 1 ? '' : 's'}`, ops);
+  },
   renameCategories(pairs) {
     const map = new Map(pairs);
     const ops = this.data.items.filter((i) => map.has(i.category)).map((i) => ({ type: 'merge', col: 'items', id: i.id, data: { category: map.get(i.category), ...this._stamp() } }));
