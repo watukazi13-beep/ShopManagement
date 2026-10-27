@@ -989,3 +989,29 @@ small.block, .muted.block { display: block; font-size: .74rem; }
 .pr-table th, .pr-table td { padding-left: 6px; padding-right: 6px; }
 .pr-table td small { display: block; color: var(--muted); font-size: .74rem; }
 .pr-table td.neg { color: var(--bad); font-weight: 700; }
+
+/* ---------- Shifts: morning screen and evening reminder ---------- */
+#shift-gate { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 20px; overflow-y: auto; background: radial-gradient(120% 80% at 50% 30%, #145E3B 0%, #0F4A2E 55%, #0B3A24 100%); color: #fff; }
+body.shift-gated { overflow: hidden; }
+.sg-card { max-width: 360px; }
+.sg-card .small { font-size: .82rem; }
+.sg-card b { color: #fff; }
+.sg-field { width: 100%; display: grid; gap: 6px; text-align: left; font-size: .88rem; font-weight: 600; color: rgb(255 255 255 / 85%); }
+.sg-field input { width: 100%; min-height: 52px; border-radius: 12px; border: 0; padding: 10px 14px; font: inherit; font-size: 1.25rem; font-weight: 700; background: #fff; color: #10251A; }
+.sg-field input[name=note] { font-size: 1rem; font-weight: 500; min-height: 46px; }
+.sg-expect { width: 100%; display: flex; justify-content: space-between; align-items: baseline; padding: 10px 14px; border-radius: 12px; background: rgb(255 255 255 / 10%); }
+.sg-expect b { font-size: 1.2rem; }
+.sg-diff { min-height: 1.2em; margin: 0; font-weight: 600; color: #FFD58A; }
+.sg-links { display: flex; gap: 18px; justify-content: center; margin-top: 6px; }
+.sg-links button { background: none; border: 0; color: rgb(255 255 255 / 75%); font: inherit; font-size: .9rem; text-decoration: underline; cursor: pointer; padding: 8px 4px; }
+.shift-bar { position: fixed; z-index: 19; left: 0; right: 0; top: calc(var(--top) + env(safe-area-inset-top)); display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px 8px 16px; background: var(--bad); color: #fff; font-weight: 650; font-size: .9rem; box-shadow: 0 4px 12px rgb(0 0 0 / 15%); }
+.shift-bar[hidden] { display: none; }
+.shift-bar span { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.shift-bar .ic { width: 18px; height: 18px; flex: none; }
+.shift-bar .btn { background: #fff; color: var(--bad); border-color: #fff; flex: none; min-height: 36px; }
+body.has-shift-bar .view { padding-top: calc(var(--top) + env(safe-area-inset-top) + 76px); }
+@media (min-width: 900px) {
+  .shift-bar { left: var(--side); padding-left: 28px; }
+  body.has-shift-bar .view { padding-top: calc(var(--top) + 84px); }
+}
+body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 64px); }

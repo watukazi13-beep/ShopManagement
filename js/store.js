@@ -26,6 +26,8 @@ export const DEFAULT_SETTINGS = {
   receiptHeader: '',
   receiptFooter: 'Thank you!',
   useShifts: false,
+  sellerMustOpenShift: true,
+  closeShiftAt: '19:30',
   autoWeeklyPo: true,
   weeklyPoDay: 1,
   lastAutoPo: '',

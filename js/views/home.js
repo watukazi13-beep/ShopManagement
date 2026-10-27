@@ -2,6 +2,7 @@ import { store } from '../store.js';
 import { daySummary, profitAndLoss, monthKey, monthLabel, stockValue, num, dayKey } from '../calc.js';
 import { todayCard, openPayout, openDayClose, showDayClose } from './dayclose.js';
 import { backupReminder, downloadFullBackup } from './backup.js';
+import { shiftsTodayCard } from './shiftgate.js';
 import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
 import { showReceipt } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
@@ -45,6 +46,7 @@ export default {
 
         ${backupReminder()}
         ${todayCard()}
+        ${shiftsTodayCard()}
 
         ${store.can('settings') && !store.settings.setupDone ? `
         <section class="card soft getting-started">

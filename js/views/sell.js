@@ -1,5 +1,6 @@
 import { store } from '../store.js';
-import { cartTotals, num, parseDiscount, taxIncluded, refundTotals } from '../calc.js';
+import { shiftRequired } from './shiftgate.js';
+import { cartTotals, num, parseDiscount, taxIncluded, refundTotals, dayKey } from '../calc.js';
 import { esc, fmt, fmtQty, fmtDateTime, fmtTime, icon, modal, toast, printHtml, confirmBox, emptyState, field } from '../ui.js';
 
 // The cart survives switching screens (kept for this browser tab).
@@ -107,7 +108,7 @@ export default {
 
     const drawTools = () => {
       const held = getHeld();
-      const shifts = store.settings.useShifts;
+      const shifts = store.settings.useShifts || shiftRequired();
       const sh = shifts ? store.myOpenShift() : null;
       el.querySelector('#pos-tools').innerHTML = `
         ${shifts && !sh ? `<div class="banner warn grow">No shift open. <button type="button" class="btn primary small" data-shift>Open shift</button></div>` : ''}
@@ -474,23 +475,28 @@ export function openShiftPanel() {
           onSubmit: (v) => { store.shiftMove(sh, { type, amount: v.amount, note: v.note }); toast('Saved'); setTimeout(openShiftPanel, 150); },
         });
       }));
-      dlg.querySelector('[data-close-shift]').addEventListener('click', () => {
-        close();
-        modal({
-          title: 'Close shift',
-          body: `<p>Expected in the drawer: <b>${fmt(f.expected)}</b></p>${field('Cash counted (TSh)', '<input name="counted" type="number" inputmode="numeric" min="0" step="1" required autofocus>')}<p id="cs-diff" class="small"></p>${field('Note (optional)', '<input name="note">')}`,
-          actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Close shift</button>',
-          onMount: (d2) => d2.addEventListener('input', () => {
-            const v = d2.querySelector('[name=counted]').value;
-            const diff = num(v) - f.expected;
-            d2.querySelector('#cs-diff').innerHTML = v === '' ? '' : diff === 0 ? '<span class="up">Drawer matches.</span>' : diff > 0 ? `<span class="warn-text">${fmt(diff)} more than expected.</span>` : `<span class="neg">${fmt(-diff)} short.</span>`;
-          }),
-          onSubmit: (v) => {
-            const r = store.closeShift(sh, v.counted, v.note);
-            toast(r.difference === 0 ? 'Shift closed — drawer matches' : `Shift closed — ${r.difference > 0 ? 'over' : 'short'} by ${fmt(Math.abs(r.difference))}`);
-          },
-        });
-      });
+      dlg.querySelector('[data-close-shift]').addEventListener('click', () => { close(); openCloseShift(sh); });
+    },
+  });
+}
+
+/** Count the drawer and close a shift (also used by the 19:30 reminder and the morning screen). */
+export function openCloseShift(sh = store.myOpenShift()) {
+  if (!sh) return;
+  const f = store.shiftFigures(sh);
+  modal({
+    title: 'Close shift',
+    body: `<p class="small">Shift opened ${fmtTime(sh.ts)}${sh.date !== dayKey() ? ` on ${esc(sh.date)}` : ''} · opening cash ${fmt(sh.openingCash)}</p>
+      <p>Expected in the drawer: <b>${fmt(f.expected)}</b></p>${field('Cash counted (TSh)', '<input name="counted" type="number" inputmode="numeric" min="0" step="1" required autofocus>')}<p id="cs-diff" class="small"></p>${field('Note (optional)', '<input name="note">')}`,
+    actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Close shift</button>',
+    onMount: (d2) => d2.addEventListener('input', () => {
+      const v = d2.querySelector('[name=counted]').value;
+      const diff = num(v) - f.expected;
+      d2.querySelector('#cs-diff').innerHTML = v === '' ? '' : diff === 0 ? '<span class="up">Drawer matches.</span>' : diff > 0 ? `<span class="warn-text">${fmt(diff)} more than expected.</span>` : `<span class="neg">${fmt(-diff)} short.</span>`;
+    }),
+    onSubmit: (v) => {
+      const r = store.closeShift(sh, v.counted, v.note);
+      toast(r.difference === 0 ? 'Shift closed — drawer matches' : `Shift closed — ${r.difference > 0 ? 'over' : 'short'} by ${fmt(Math.abs(r.difference))}`);
     },
   });
 }

@@ -109,6 +109,8 @@ export default {
             <select name="weeklyPoDay" aria-label="Day of the week">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${Number(s.weeklyPoDay ?? 1) === i ? 'selected' : ''}>${d}</option>`).join('')}</select>
           </div>
           <label class="check"><input type="checkbox" name="useShifts" ${s.useShifts ? 'checked' : ''}> Use shifts: count the cash drawer when opening and closing</label>
+          <label class="check"><input type="checkbox" name="sellerMustOpenShift" ${s.sellerMustOpenShift !== false ? 'checked' : ''}> Sellers must open a shift (count the drawer) before they can use the app</label>
+          <div class="field inline"><label for="st-close">Remind to close the shift at</label><input id="st-close" name="closeShiftAt" type="time" value="${esc(s.closeShiftAt || '19:30')}" style="max-width:130px"></div>
           <label class="check"><input type="checkbox" name="staffCanReceive" ${s.staffCanReceive ? 'checked' : ''}> Sellers can receive deliveries into stock (otherwise only owners and managers)</label>
           <h3>Lists</h3>
           ${field('Payment methods', `<input name="payMethods" value="${esc((s.payMethods || []).join(', '))}">`, 'Separate with commas')}
@@ -139,7 +141,7 @@ export default {
           shopName: v.shopName.trim(), phone: v.phone, email: v.email, address: v.address, tin: v.tin,
           leadDays: num(v.leadDays) || 7, coverDays: num(v.coverDays) || 30, windowDays: num(v.windowDays) || 30,
           paymentDetails: v.paymentDetails, receiptHeader: v.receiptHeader, receiptFooter: v.receiptFooter, taxName: v.taxName || 'VAT', taxRate: Math.max(0, num(v.taxRate)),
-          autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on', useShifts: v.useShifts === 'on', autoWeeklyPo: v.autoWeeklyPo === 'on', weeklyPoDay: Number(v.weeklyPoDay ?? 1),
+          autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on', useShifts: v.useShifts === 'on', sellerMustOpenShift: v.sellerMustOpenShift === 'on', closeShiftAt: /^\d{1,2}:\d{2}$/.test(v.closeShiftAt || '') ? v.closeShiftAt : '19:30', autoWeeklyPo: v.autoWeeklyPo === 'on', weeklyPoDay: Number(v.weeklyPoDay ?? 1),
           payMethods: list(v.payMethods).length ? list(v.payMethods) : ['Cash'],
           expenseCategories: list(v.expenseCategories),
         });

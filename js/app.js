@@ -7,6 +7,7 @@ import { installApp, isInstalled } from './install.js';
 import { applyTheme, shownTheme, toggleTheme } from './theme.js';
 import { offerUndo } from './views/changes.js';
 import { initTill, lock as lockTill, staffChip } from './views/staff.js';
+import { checkShiftGate, paintShiftBar, startShiftReminders } from './views/shiftgate.js';
 
 applyTheme();
 import home from './views/home.js';
@@ -174,6 +175,7 @@ function showShell() {
       <button type="button" class="icon-btn theme-btn" id="theme-btn"></button>
       <a href="#/settings" class="icon-btn" aria-label="Settings">${icon('settings')}</a>
     </header>
+    <div id="shift-bar" class="shift-bar" role="alert" hidden></div>
     <nav class="nav" aria-label="Main">
       <a href="#/home" class="nav-brand" tabindex="-1" aria-hidden="true"><img src="brand/symbol-on-dark.svg" alt="" width="30" height="30"><span>Shop Manager</span></a>
       ${links.map(([id, label, ic]) => `<a href="#/${id}" data-nav="${id}">${icon(ic)}<span>${label}</span></a>`).join('')}
@@ -214,6 +216,7 @@ function paintChrome() {
     const chip = staffChip();
     if (slot.innerHTML !== chip) { slot.innerHTML = chip; slot.querySelector('#staff-chip')?.addEventListener('click', lockTill); }
   }
+  if (store.ready) { checkShiftGate({ signOut, switchUser: lockTill }); paintShiftBar(); }
   const lows = store.ready ? store.lowStock().length : 0;
   const stockLink = document.querySelector('[data-nav=stock]');
   if (stockLink) stockLink.dataset.badge = lows ? String(lows) : '';
@@ -330,6 +333,7 @@ async function boot() {
       checked = true;
       setTimeout(() => store.dailyLowStockCheck(), 2000);
       setTimeout(() => store.dailySnapshot().catch((e) => console.warn('snapshot', e)), 6000);
+      startShiftReminders();
       offerTrialData();
     }
   });
