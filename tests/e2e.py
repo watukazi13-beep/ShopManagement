@@ -25,6 +25,16 @@ def item(pg, name):
 with sync_playwright() as p:
     b = p.chromium.launch()
     ctx = b.new_context(viewport={'width': W, 'height': H})
+    COLLECT = os.environ.get('COLLECT')
+    seen_text = set()
+    if COLLECT:
+        # Record every piece of text the app shows (used to check translations cover everything).
+        ctx.expose_function('__collect', lambda t: seen_text.add(t))
+        ctx.add_init_script("""(() => { const S = new Set(); const send = (t) => { t = (t || '').replace(/\\s+/g, ' ').trim(); if (t && /[A-Za-z]{2}/.test(t) && !S.has(t)) { S.add(t); window.__collect(t); } };
+          const scan = (n) => { if (!n) return; if (n.nodeType === 3) { if (!/^(SCRIPT|STYLE)$/.test(n.parentNode?.nodeName || '')) send(n.nodeValue); return; } if (n.nodeType !== 1 || /^(SCRIPT|STYLE)$/.test(n.nodeName)) return;
+            for (const a of ['placeholder', 'aria-label', 'title']) send(n.getAttribute(a)); n.childNodes.forEach(scan); };
+          const start = () => { scan(document.body); new MutationObserver((l) => l.forEach((m) => { if (m.type === 'characterData') scan(m.target); else if (m.type === 'attributes') send(m.target.getAttribute(m.attributeName)); else m.addedNodes.forEach(scan); })).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'aria-label', 'title'] }); };
+          if (document.body) start(); else document.addEventListener('DOMContentLoaded', start); })();""")
     # Tests never touch the real Firebase project: serve a blank config.
     ctx.route('**/js/config.js', lambda r: r.fulfill(status=200, body="export const firebaseConfig = { apiKey: '' };", headers={'content-type': 'text/javascript'}))
     # The web font comes from Google; tests run without internet, so serve an empty stylesheet.
@@ -101,21 +111,21 @@ with sync_playwright() as p:
 
     # --- Light / dark theme
     bg = lambda: pg.evaluate("getComputedStyle(document.body).backgroundColor")
-    check(bg() == 'rgb(241, 243, 240)', 'light theme by default (device is light)')
+    check(bg() == 'rgb(244, 245, 247)', 'light theme by default (device is light)')
     pg.click('[data-theme-pick=dark]'); pg.wait_for_timeout(150)
-    check(pg.evaluate("document.documentElement.dataset.theme") == 'dark' and bg() == 'rgb(11, 18, 14)', 'choosing Dark turns the app dark')
+    check(pg.evaluate("document.documentElement.dataset.theme") == 'dark' and bg() == 'rgb(17, 20, 24)', 'choosing Dark turns the app dark')
     pg.screenshot(path=OUT + 'dark-settings.png')
     pg.reload(); pg.wait_for_timeout(800)
-    check(bg() == 'rgb(11, 18, 14)' and pg.locator('[data-theme-pick=dark].on').count() == 1, 'Dark is remembered after reopening')
+    check(bg() == 'rgb(17, 20, 24)' and pg.locator('[data-theme-pick=dark].on').count() == 1, 'Dark is remembered after reopening')
     go('#/home'); pg.wait_for_timeout(200); pg.screenshot(path=OUT + 'dark-home.png', full_page=True)
     pg.click('#theme-btn'); pg.wait_for_timeout(150)
-    check(bg() == 'rgb(241, 243, 240)', 'the top-bar button switches back to light')
+    check(bg() == 'rgb(244, 245, 247)', 'the top-bar button switches back to light')
     go('#/settings'); pg.click('[data-theme-pick=auto]'); pg.wait_for_timeout(150)
     check(pg.evaluate("document.documentElement.dataset.theme") is None and pg.evaluate("localStorage.getItem('theme')") is None, 'Automatic follows the device again')
     pg.emulate_media(color_scheme='dark'); pg.wait_for_timeout(150)
-    check(bg() == 'rgb(11, 18, 14)', 'Automatic turns dark when the device is dark')
+    check(bg() == 'rgb(17, 20, 24)', 'Automatic turns dark when the device is dark')
     pg.click('[data-theme-pick=light]'); pg.wait_for_timeout(150)
-    check(bg() == 'rgb(241, 243, 240)', 'Light stays light even when the device is dark')
+    check(bg() == 'rgb(244, 245, 247)', 'Light stays light even when the device is dark')
     pg.click('[data-theme-pick=auto]'); pg.emulate_media(color_scheme='light'); pg.wait_for_timeout(150)
 
     # --- Supplier
@@ -1009,6 +1019,8 @@ with sync_playwright() as p:
     if os.environ.get('DUMP'): open(os.environ['DUMP'], 'w').write(json.dumps(data(pg)))
     print('\nConsole errors:', '\n'.join(errs) if errs else 'none')
     if errs: fails.append('console errors')
+    if COLLECT:
+        import json as _j; _j.dump(sorted(seen_text), open(COLLECT, 'w'), ensure_ascii=False, indent=0)
     b.close()
 
 print(f"\n{'ALL PASSED' if not fails else str(len(fails)) + ' FAILED'}")

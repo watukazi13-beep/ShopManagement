@@ -2,8 +2,10 @@
 // every piece of text that appears is swapped for its Kiswahili version (exact phrases, then patterns
 // for text with numbers or names in it). Item names, customer names and numbers are never changed.
 
+import { SW_PAIRS } from './sw-dict.js';
+
 const KEY = 'lang';
-export function getLang() { try { return localStorage.getItem(KEY) === 'sw' ? 'sw' : 'en'; } catch { return 'en'; } }
+export function getLang() { try { if (typeof localStorage === 'undefined') return 'en'; return localStorage.getItem(KEY) === 'sw' ? 'sw' : 'en'; } catch { return 'en'; } }
 export function setLang(l) { try { localStorage.setItem(KEY, l === 'sw' ? 'sw' : 'en'); } catch { /* ignore */ } location.reload(); }
 
 const SW = {
@@ -96,15 +98,71 @@ const SKIP = new Set(['SCRIPT', 'STYLE', 'CODE', 'PRE']);
 const FIELDS = new Set(['TEXTAREA', 'INPUT']); // their typed text is never changed, only placeholder / label
 const ATTRS = ['placeholder', 'aria-label', 'title'];
 
-function tr(text) {
-  const t = text.trim();
-  if (!t || t.length > 200) return null;
-  if (SW[t] !== undefined) return text.replace(t, SW[t]);
-  for (const [re, fn] of PATTERNS) {
-    const m = t.match(re);
-    if (m) return text.replace(t, fn(...m));
+// Exact phrases and phrases with {} (numbers, names, amounts) from the full dictionary.
+const EXACT = new Map(Object.entries(SW));
+const TEMPLATES = [];
+const COUNT_WORDS = [['item', 'bidhaa'], ['items', 'bidhaa'], ['sale', 'mauzo'], ['sales', 'mauzo'], ['receipt', 'risiti'], ['receipts', 'risiti'], ['customer', 'mteja'], ['customers', 'wateja'],
+  ['supplier', 'msambazaji'], ['suppliers', 'wasambazaji'], ['purchase', 'manunuzi'], ['purchases', 'manunuzi'], ['line', 'mstari'], ['lines', 'mistari'], ['refunds', 'marejesho'], ['records', 'kumbukumbu'],
+  ['days', 'siku'], ['day', 'siku'], ['counted', 'zimehesabiwa'], ['different', 'tofauti'], ['entries', 'maingizo'], ['minutes', 'dakika']];
+const COUNT_RE = new RegExp(`^([\\d,.]+) (${COUNT_WORDS.map(([en]) => en).join('|')})$`);
+const COUNT_MAP = new Map(COUNT_WORDS);
+SW_PAIRS.push(['{} sales · {} gross profit', 'mauzo {} · faida ghafi {}'], ['{} sale · {} gross profit', 'mauzo {} · faida ghafi {}'], ['{} pcs left', 'vimebaki {}'], ['{} left', 'zimebaki {}'], ['about {} days', 'takriban siku {}'],
+  ['{} receipts · {} sales · {} paid out · by {}', 'risiti {} · mauzo {} · {} imetolewa · na {}'], ['by {}', 'na {}'], ['from {}', 'kutoka {}'], ['ordered {}', 'imeagizwa {}'], ['expected {}', 'inatarajiwa {}'], ['monthly', 'kila mwezi'], ['weekly', 'kila wiki'], ['cancelled', 'imeghairiwa'],
+  ['{} short.', 'Pungufu {}.'], ['{} more than expected.', '{} zaidi ya inayotarajiwa.'], ['{} each', '{} kila moja'], ['{} per piece', '{} kwa kipande'], ['{} × {} = {}', '{} × {} = {}'], ['= {} into stock', '= {} zinaingia stoo'], ['supplier calls it “{}”', 'msambazaji anaiita “{}”'],
+  ['Shift opened {} · opening cash {}', 'Zamu imefunguliwa {} · pesa ya kuanzia {}'], ['Last count, {}', 'Hesabu ya mwisho, {}'], ['{} margin', 'faida {}'], ['{} − discount {}', '{} − punguzo {}'], ['Stock adjusted: {}', 'Stoo imerekebishwa: {}'], ['sales {} · paid debts {} · pay-outs {}', 'mauzo {} · madeni yaliyolipwa {} · malipo {}'],
+  ['Opened {} · cash {}', 'Ilifunguliwa {} · pesa {}'], ['Closed {} · {}', 'Imefungwa {} · {}'], ['Closed {}', 'Imefungwa {}'], ['Closed {} by {}', 'Imefungwa {} na {}'], ['Shift · since {}', 'Zamu · tangu {}'], ['Shift since {}', 'Zamu tangu {}'],
+  ['{} lunch for 2 staff', '{} chakula cha wafanyakazi 2'], ['Other savings — {}', 'Akiba nyingine — {}'], ['Food — {}', 'Chakula — {}'], ['to order ({} new items) · {} not available', 'za kuagiza (bidhaa mpya {}) · {} hazipatikani'], ['matches', 'sawa']);
+for (const [en, sw] of SW_PAIRS) {
+  if (!en.includes('{}')) { EXACT.set(en, sw); continue; }
+  const parts = en.split('{}');
+  const lit = parts.reduce((a, b) => (b.length > a.length ? b : a), '');
+  if (lit.trim().length < 2) continue;
+  TEMPLATES.push({ multi: en.includes(' · '), re: new RegExp(`^${parts.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.*?)')}$`), lit, sw, n: lit.length });
+}
+TEMPLATES.sort((a, b) => b.n - a.n);
+const MONTHS = { Jan: 'Jan', Feb: 'Feb', Mar: 'Mac', Apr: 'Apr', May: 'Mei', Jun: 'Jun', Jul: 'Jul', Aug: 'Ago', Sep: 'Sep', Oct: 'Okt', Nov: 'Nov', Dec: 'Des' };
+// Safe multi-word phrases swapped inside longer text that has no exact translation.
+const PHRASES = [['Count all the money in the drawer, including the opening cash.', 'Hesabu pesa yote iliyo kwenye droo, ikiwemo pesa ya kuanzia.'], ['Opening cash', 'Pesa ya kuanzia'], ['cash sales', 'mauzo ya taslimu'], ['customer payments', 'malipo ya wateja'],
+  ['pay-outs', 'malipo'], ['taken out', 'iliyotolewa'], ['put in', 'iliyowekwa'], ['refunds', 'marejesho'], ['gross profit', 'faida ghafi'], ['in total', 'kwa jumla'], ['already in', 'tayari zimeingia'], ['of sales', 'ya mauzo'], ['at cost', 'kwa gharama'],
+  ['Thank you', 'Asante'], ['see you tomorrow', 'tuonane kesho'], ['into stock', 'zinaingia stoo']];
+
+function one(t, depth = 0, multiOnly = false) {
+  if (EXACT.has(t)) return EXACT.get(t);
+  const c = t.match(COUNT_RE);
+  if (c) return `${COUNT_MAP.get(c[2])} ${c[1]}`;
+  for (const T of TEMPLATES) {
+    if (multiOnly && !T.lit.includes(' · ') && !T.multi) continue;
+    if (!t.includes(T.lit)) continue;
+    const m = t.match(T.re);
+    if (!m) continue;
+    let i = 1;
+    return T.sw.replace(/\{\}/g, () => { const g = m[i++] ?? ''; const x = depth < 2 && g.trim() ? one(g.trim(), depth + 1) : null; return x ?? g; });
   }
+  let m = t.match(/^(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4})(.*)$/);
+  if (m) return `${m[1]} ${MONTHS[m[2]]} ${m[3]}${m[4] ? (one(m[4].replace(/^,\s*/, '')) !== null ? `, ${one(m[4].replace(/^,\s*/, ''))}` : m[4]) : ''}`;
+  for (const [re, fn] of PATTERNS) { m = t.match(re); if (m) return fn(...m); }
   return null;
+}
+
+export function tr(text) {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (!t || t.length > 600 || !/[A-Za-z]/.test(t)) return null;
+  const multi = t.includes(' · ');
+  let out = multi ? one(t, 0, true) : one(t);
+  if (out === null && multi) {
+    // Lines such as "PO-261031 · 31 Oct 2026 · 2 items · expected 7 Nov 2026": translate each part.
+    const parts = t.split(' · ').map((p) => one(p) ?? p);
+    const joined = parts.join(' · ');
+    if (joined !== t) out = joined;
+  }
+  if (out === null) {
+    let x = t;
+    for (const [en, sw] of PHRASES) if (x.includes(en)) x = x.split(en).join(sw);
+    if (x !== t) out = x;
+  }
+  if (out === null || out === t) return null;
+  const lead = text.match(/^\s*/)[0], tail = text.match(/\s*$/)[0];
+  return lead + out + tail;
 }
 
 function walk(root) {
@@ -142,7 +200,7 @@ export function langSwitch(cls = '') {
   const l = getLang();
   return `<span class="lang-switch ${cls}" data-no-tr><button type="button" data-lang="en" class="${l === 'en' ? 'on' : ''}">English</button><button type="button" data-lang="sw" class="${l === 'sw' ? 'on' : ''}">Kiswahili</button></span>`;
 }
-document.addEventListener('click', (e) => {
+if (typeof document !== 'undefined') document.addEventListener('click', (e) => {
   const b = e.target.closest?.('[data-lang]');
   if (b && b.dataset.lang !== getLang()) setLang(b.dataset.lang);
 });
