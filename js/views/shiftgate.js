@@ -9,6 +9,7 @@ import { dayKey, num } from '../calc.js';
 import { esc, fmt, fmtDate, fmtTime, icon, toast } from '../ui.js';
 import { isSharedTill } from './staff.js';
 import { openCloseShift } from './sell.js';
+import { langSwitch } from '../i18n.js';
 
 const REMIND_EVERY = 15 * 60 * 1000;
 const LS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
@@ -71,7 +72,7 @@ export function checkShiftGate(h = hooks) {
   gateEl.setAttribute('aria-modal', 'true');
   gateEl.setAttribute('aria-label', st.mode === 'open' ? 'Open your shift' : st.mode === 'closed' ? 'Shift closed for today' : 'Close the earlier shift');
   const shop = esc(store.settings.shopName || store.shop?.name || 'Shop');
-  const links = `<div class="sg-links">${isSharedTill() ? '<button type="button" data-switch>Change person</button>' : ''}<button type="button" data-signout>Sign out</button></div>`;
+  const links = `<div class="sg-links">${isSharedTill() ? '<button type="button" data-switch>Change person</button>' : ''}<button type="button" data-signout>Sign out</button></div>${langSwitch('on-dark')}`;
   if (st.mode === 'open') {
     gateEl.innerHTML = `
       <form class="lock-card sg-card" novalidate>
@@ -194,7 +195,7 @@ export function shiftsTodayCard() {
     const opened = `${(s.date || dayKey(s.ts)) === today ? '' : `${fmtDate(s.ts)} `}${fmtTime(s.ts)}`;
     const status = s.closedAt
       ? `<span class="pill ${num(s.difference) < 0 ? 'bad' : num(s.difference) > 0 ? 'warn' : 'good'}">Closed ${fmtTime(s.closedAt)} · ${num(s.difference) === 0 ? 'matches' : num(s.difference) < 0 ? `short ${fmt(-num(s.difference))}` : `over ${fmt(num(s.difference))}`}</span>`
-      : `<span class="pill ${late || (s.date || dayKey(s.ts)) !== today ? 'bad' : 'good'}">${late || (s.date || dayKey(s.ts)) !== today ? 'Still open' : 'Open'}</span>`;
+      : `<span class="pill ${late || (s.date || dayKey(s.ts)) !== today ? 'bad' : 'good'}">${late || (s.date || dayKey(s.ts)) !== today ? 'Still open' : 'Open now'}</span>`;
     return `<li class="row"><div class="grow"><b>${who}</b><small>Opened ${opened} · cash ${fmt(s.openingCash)}</small></div>${status}</li>`;
   };
   return `

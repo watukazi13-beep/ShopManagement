@@ -1,6 +1,7 @@
 // Shared till: several staff use one phone or computer. Each unlocks it with a 4-digit PIN,
 // so every sale, pay-out and closing records who did it, and the screens follow their role.
 import { store, hashPin } from '../store.js';
+import { langSwitch } from '../i18n.js';
 import { esc, icon, modal, toast, field, confirmBox } from '../ui.js';
 
 const LS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { return null; } return null; };
@@ -40,7 +41,8 @@ export function lock() {
         <p class="pin-err" id="pin-err"></p>
         <div class="pin-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-d="${n}">${n}</button>`).join('')}
           <button type="button" data-back aria-label="Back">${icon('back')}</button><button type="button" data-d="0">0</button><button type="button" data-del aria-label="Delete">⌫</button></div>`
-      : `<div class="staff-pick">${staffList().map((s) => `<button type="button" class="btn ghost block" data-staff="${s.id}"><b>${esc(s.name)}</b><small>${ROLE[s.role] || 'Seller'}</small></button>`).join('')}</div>`}
+      : `<div class="staff-pick">${staffList().map((s) => `<button type="button" class="btn ghost block" data-staff="${s.id}"><b data-no-tr>${esc(s.name)}</b><small>${ROLE[s.role] || 'Seller'}</small></button>`).join('')}</div>`}
+      ${langSwitch('on-dark')}
     </div>`;
   };
   const tryPin = async () => {

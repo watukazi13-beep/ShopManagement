@@ -8,6 +8,7 @@ import { applyTheme, shownTheme, toggleTheme } from './theme.js';
 import { offerUndo } from './views/changes.js';
 import { initTill, lock as lockTill, staffChip } from './views/staff.js';
 import { checkShiftGate, paintShiftBar, startShiftReminders } from './views/shiftgate.js';
+import { initLang } from './i18n.js';
 
 applyTheme();
 import home from './views/home.js';
@@ -296,6 +297,7 @@ function setupUpdates() {
 
 // ---------- Start ----------
 async function boot() {
+  initLang();
   if ('serviceWorker' in navigator) setupUpdates();
 
   let cfg = firebaseConfig?.apiKey ? firebaseConfig : null;

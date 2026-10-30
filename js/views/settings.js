@@ -1,4 +1,5 @@
 import { store } from '../store.js';
+import { langSwitch } from '../i18n.js';
 import { num } from '../calc.js';
 import { esc, icon, toast, field, confirmBox, downloadFile, modal } from '../ui.js';
 import { APP_NAME, MAKER, AUTHOR, VERSION } from '../brand.js';
@@ -52,6 +53,8 @@ export default {
                 <span class="theme-swatch ${v}">${icon(ic)}</span><span>${t}</span></button>`).join('')}
           </div>
           <p class="muted small">Saved on this device. Automatic follows your phone or computer setting. You can also switch with the ${icon('moon')} button at the top.</p>
+          <div class="lang-row"><b>Language</b>${langSwitch()}</div>
+          <p class="muted small">Kiswahili is saved on this device, so each seller's phone can have its own language. The main selling screens are translated; some owner screens stay in English for now.</p>
         </section>
 
         ${owner && store.mode !== 'local' ? `
