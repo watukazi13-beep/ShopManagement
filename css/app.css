@@ -1203,3 +1203,15 @@ body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 6
 @media (min-width: 900px) { .gate-brand { background: var(--slate) !important; } }
 .card.soft.getting-started, .card.soft.compact-banner, .card.install-card { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
 @media (max-width: 639px) { .money-tabs button { white-space: normal; line-height: 1.15; font-size: .8rem; padding: 7px 2px; } }
+/* All tab strips: every tab visible on phones (text may wrap), no hidden scrolling. */
+@media (max-width: 639px) {
+  .seg.tabs { display: grid !important; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); overflow: visible; }
+  .seg.tabs.money-tabs { grid-auto-flow: row; grid-template-columns: repeat(4, 1fr); }
+  .seg.tabs button { white-space: normal; line-height: 1.15; font-size: .8rem; padding: 7px 2px; min-width: 0; }
+}
+/* Soft hint cards: light grey, not green. */
+.card.soft { background: var(--surface-2); border: 1px solid var(--line); }
+@media (max-width: 639px) {
+  .seg.tabs:not(.money-tabs) { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .seg.tabs button { overflow-wrap: anywhere; }
+}
