@@ -1089,3 +1089,18 @@ details.tech { margin-top: 14px; } details.tech summary { color: var(--muted); f
 /* Messages never hide the shift reminder. */
 body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 64px); }
 .cart-bar[hidden] { display: none !important; }
+
+/* ---- Stock page 4.3 ---- */
+.wide-only { display: contents; }
+.narrow-only { display: none; }
+@media (max-width: 639px) {
+  .wide-only { display: none; }
+  .narrow-only { display: inline-flex; }
+  .stock-figs:not(.open) .fig-more { display: none; }
+  .figs-toggle { margin: -4px 0 12px; font-size: .85rem; }
+  .view-stock .page-head { flex-wrap: nowrap; align-items: center; }
+  .view-stock .head-actions { flex-wrap: nowrap; }
+}
+/* Stock list: number and unit on one line; min/max only on phones (desktop has columns). */
+.table td small.unit { display: inline; margin-left: 2px; }
+@media (min-width: 640px) { .table td small.only-sm.levels { display: none; } }

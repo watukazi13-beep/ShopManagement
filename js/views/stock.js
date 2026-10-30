@@ -13,15 +13,17 @@ export default {
     let filter = params.get('filter') || 'all';
     let q = '';
     let cat = '';
+    let figsOpen = false;
     const boss = store.can('editItems');
     el.innerHTML = `
       <div class="page-head">
         <h1>Stock</h1>
         <div class="head-actions">
-          ${boss ? `<button class="btn ghost" data-act="import">${icon('upload')}<span class="hide-sm">Import</span></button>
-          <button class="btn ghost" data-act="export">${icon('download')}<span class="hide-sm">Export</span></button>
+          ${boss ? `<span class="wide-only"><button class="btn ghost" data-act="import">${icon('upload')}Import</button>
+          <button class="btn ghost" data-act="export">${icon('download')}Export</button>
           <button class="btn ghost" data-act="levels">Min / max</button>
-          <button class="btn ghost" data-act="count">Count stock</button>
+          <button class="btn ghost" data-act="count">Count stock</button></span>
+          <button class="btn ghost narrow-only" data-act="tools" aria-label="More stock tools">More</button>
           <button class="btn primary" data-act="new">${icon('plus')}Add item</button>` : ''}
         </div>
       </div>
@@ -51,14 +53,14 @@ export default {
       if (boss) {
         const v = stockValue(items);
         const lows = plan.filter((p) => p.status === 'out' || p.status === 'low').length;
-        sumEl.innerHTML = `<div class="stats compact">
-          <div><span>Items</span><strong>${items.length}</strong></div>
+        sumEl.innerHTML = `<div class="stats compact stock-figs ${figsOpen ? 'open' : ''}">
           <div><span>Stock value (cost)</span><strong>${fmt(v.cost)}</strong></div>
-          <div><span>Stock value (selling)</span><strong>${fmt(v.retail)}</strong></div>
-          <div><span>Potential profit</span><strong>${fmt(v.retail - v.cost)}</strong></div>
-          <div><span>Margin</span><strong>${v.retail ? (Math.floor(((v.retail - v.cost) / v.retail) * 10000) / 100).toFixed(2) + '%' : '—'}</strong></div>
           <div class="${lows ? 'warn' : ''}"><span>Need restock</span><strong>${lows}</strong></div>
-        </div>`;
+          <div class="fig-more"><span>Items</span><strong>${items.length}</strong></div>
+          <div class="fig-more"><span>Stock value (selling)</span><strong>${fmt(v.retail)}</strong></div>
+          <div class="fig-more"><span>Potential profit</span><strong>${fmt(v.retail - v.cost)}</strong></div>
+          <div class="fig-more"><span>Margin</span><strong>${v.retail ? (Math.floor(((v.retail - v.cost) / v.retail) * 10000) / 100).toFixed(2) + '%' : '—'}</strong></div>
+        </div><button type="button" class="link narrow-only figs-toggle" data-act="figs">${figsOpen ? 'Fewer figures' : 'More figures'}</button>`;
       }
       if (filter === 'incoming') { drawIncoming(incoming); return; }
       const s = q.toLowerCase();
@@ -119,6 +121,22 @@ export default {
       if (a === 'export') exportItems();
       if (a === 'levels') openLevels();
       if (a === 'count') openCount();
+      if (a === 'figs') { figsOpen = !figsOpen; draw(); }
+      if (a === 'tools') {
+        modal({
+          title: 'Stock tools',
+          body: `<div class="pick-list">
+            <button type="button" class="btn ghost block" data-tool="count">${icon('check')}Count stock</button>
+            <button type="button" class="btn ghost block" data-tool="levels">${icon('stock')}Min / max levels</button>
+            <button type="button" class="btn ghost block" data-tool="import">${icon('upload')}Import items</button>
+            <button type="button" class="btn ghost block" data-tool="export">${icon('download')}Export items</button></div>`,
+          actions: '<button class="btn ghost" value="cancel">Close</button>',
+          onMount: (dlg, close) => dlg.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => {
+            close();
+            ({ count: openCount, levels: openLevels, import: openImport, export: exportItems })[b.dataset.tool]();
+          })),
+        });
+      }
       const id = e.target.closest('[data-item]')?.dataset.item;
       if (id) openItem(store.item(id));
     });
