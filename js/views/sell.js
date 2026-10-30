@@ -28,12 +28,12 @@ export default {
     el.innerHTML = `
       <div class="pos">
         <section class="pos-items">
-          <div class="pos-tools" id="pos-tools"></div>
           <div class="searchbar">
             ${icon('search')}
             <input id="pos-search" type="search" placeholder="Search or scan barcode" autocomplete="off" enterkeyhint="search">
           </div>
           <div class="chips" id="pos-cats"></div>
+          <div class="pos-tools" id="pos-tools"></div>
           <div class="tiles" id="pos-tiles"></div>
         </section>
         <aside class="pos-cart" id="pos-cart"></aside>

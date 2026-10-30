@@ -28,7 +28,7 @@ export default {
       try { hideInstall ||= localStorage.getItem('install-dismissed') === '1'; } catch { /* ignore */ }
       el.innerHTML = `
         ${hideInstall ? '' : `<section class="card install-card">
-          <div class="grow"><b>Install Shop Manager on this device</b><small>Opens like a normal app from your home screen or desktop, and works without internet.</small></div>
+          <div class="grow"><b>Install the app</b><small>Opens from your home screen and works offline.</small></div>
           <button class="btn primary" data-act="install">${icon('download')}Install</button>
           <button class="icon-btn" data-act="install-later" aria-label="Not now">${icon('x')}</button>
         </section>`}
@@ -40,21 +40,53 @@ export default {
           <div class="quick">
             <a class="btn accent big" href="#/sell">${icon('sell')}New sale</a>
             ${store.can('orders') ? `<button class="btn ghost" data-act="receive">${icon('truck')}Receive stock</button>` : ''}
-            ${boss ? `<button class="btn ghost" data-act="expense">${icon('money')}Add expense</button>` : ''}
+            ${boss ? `<button class="btn ghost" data-act="expense">${icon('receipt')}Add expense</button>` : ''}
           </div>
         </section>
 
-        ${backupReminder()}
-        ${todayCard()}
-        ${shiftsTodayCard()}
-
         ${store.can('settings') && !store.settings.setupDone ? `
-        <section class="card soft getting-started">
-          <div class="card-head"><h2>Set up your shop</h2></div>
-          <p>A few quick steps: shop details and logo, how customers pay, receipts, categories, restocking${store.mode === 'local' ? '' : ', your staff'} and your items.</p>
+        <section class="card soft getting-started compact-banner">
+          <div class="grow"><b>Set up your shop</b><small>A few quick steps: shop details and logo, how customers pay, receipts, categories, restocking${store.mode === 'local' ? '' : ', your staff'} and your items.</small></div>
           <div class="row-btns"><button class="btn primary" data-act="setup">Start setup</button><button class="btn ghost" data-act="setup-later">Not now</button></div>
         </section>` : ''}
 
+        ${backupReminder()}
+        <div class="home-cols">
+        <div class="home-col">
+        <section class="card">
+          <div class="card-head">
+            <h2>Stock alerts ${lows.length ? `<span class="count bad">${lows.length}</span>` : ''}</h2>
+            ${lows.length ? `<a class="link" href="#/stock?filter=low">See all</a>` : ''}
+          </div>
+          ${lows.length ? `
+            <ul class="rows">
+              ${lows.slice(0, 6).map((p) => `
+                <li class="row">
+                  <div class="grow"><b>${esc(p.item.name)}</b><small>${fmtQty(p.stock)} ${esc(p.item.unit || '')} left${p.daysLeft !== null ? ` · about ${Math.floor(p.daysLeft)} days` : ''}</small></div>
+                  ${statusPill(p.status)}
+                </li>`).join('')}
+            </ul>
+            ${store.can('orders') ? `<button class="btn primary block" data-act="rfq">${icon('orders')}Create requests for quotation</button>` : ''}
+          ` : `<p class="muted">${store.data.items.length ? 'All items are above their reorder level.' : 'Alerts appear here when items run low.'}</p>`}
+          ${'Notification' in window && Notification.permission === 'default' ? `<p class="small notify-hint"><button class="link" data-act="notify">Turn on phone alerts</button> to be told when stock runs low.</p>` : ''}
+        </section>
+
+        ${todayCard()}
+        ${shiftsTodayCard()}
+        ${(() => {
+          const incoming = store.openPos().sort((a, b) => (a.expectedTs || 0) - (b.expectedTs || 0));
+          if (!incoming.length) return '';
+          const late = incoming.filter(isLate).length;
+          return `<section class="card">
+            <div class="card-head"><h2>Expected deliveries ${late ? `<span class="count bad">${late} late</span>` : ''}</h2><a class="link" href="#/stock?filter=incoming">Receive</a></div>
+            <ul class="rows">${incoming.slice(0, 4).map((po) => `
+              <li class="row"><div class="grow"><b>${esc(po.supplierName)}</b><small>${esc(po.no)} · ${po.lines.length} item${po.lines.length === 1 ? '' : 's'}</small></div>
+              <span class="${isLate(po) ? 'warn-text' : 'muted'} small">${isLate(po) ? 'was due ' : 'due '}${fmtDate(po.expectedTs)}</span></li>`).join('')}</ul>
+          </section>`;
+        })()}
+
+        </div>
+        <div class="home-col">
         ${boss ? `
         <section class="card">
           <div class="card-head"><h2>${esc(monthLabel(mk))}</h2><a href="#/money" class="link">Full report</a></div>
@@ -84,43 +116,14 @@ export default {
         })()}` : ''}
 
         <section class="card">
-          <div class="card-head">
-            <h2>Stock alerts ${lows.length ? `<span class="count bad">${lows.length}</span>` : ''}</h2>
-            ${lows.length ? `<a class="link" href="#/stock?filter=low">See all</a>` : ''}
-          </div>
-          ${lows.length ? `
-            <ul class="rows">
-              ${lows.slice(0, 6).map((p) => `
-                <li class="row">
-                  <div class="grow"><b>${esc(p.item.name)}</b><small>${fmtQty(p.stock)} ${esc(p.item.unit || '')} left${p.daysLeft !== null ? ` · about ${Math.floor(p.daysLeft)} days` : ''}</small></div>
-                  ${statusPill(p.status)}
-                </li>`).join('')}
-            </ul>
-            ${store.can('orders') ? `<button class="btn primary block" data-act="rfq">${icon('orders')}Create requests for quotation</button>` : ''}
-          ` : `<p class="muted">${store.data.items.length ? 'All items are above their reorder level.' : 'Alerts appear here when items run low.'}</p>`}
-          ${'Notification' in window && Notification.permission === 'default' ? `<p class="small notify-hint"><button class="link" data-act="notify">Turn on phone alerts</button> to be told when stock runs low.</p>` : ''}
-        </section>
-
-        ${(() => {
-          const incoming = store.openPos().sort((a, b) => (a.expectedTs || 0) - (b.expectedTs || 0));
-          if (!incoming.length) return '';
-          const late = incoming.filter(isLate).length;
-          return `<section class="card">
-            <div class="card-head"><h2>Expected deliveries ${late ? `<span class="count bad">${late} late</span>` : ''}</h2><a class="link" href="#/stock?filter=incoming">Receive</a></div>
-            <ul class="rows">${incoming.slice(0, 4).map((po) => `
-              <li class="row"><div class="grow"><b>${esc(po.supplierName)}</b><small>${esc(po.no)} · ${po.lines.length} item${po.lines.length === 1 ? '' : 's'}</small></div>
-              <span class="${isLate(po) ? 'warn-text' : 'muted'} small">${isLate(po) ? 'was due ' : 'due '}${fmtDate(po.expectedTs)}</span></li>`).join('')}</ul>
-          </section>`;
-        })()}
-
-        <section class="card">
           <div class="card-head"><h2>Recent sales</h2>${store.can('reports') ? '<a class="link" href="#/money?tab=sales">All sales</a>' : ''}</div>
           ${recent.length ? `<ul class="rows">${recent.map((s) => `
             <li class="row tap" data-sale="${s.id}">
               <div class="grow"><b>${esc(s.lines.map((l) => l.name).slice(0, 2).join(', '))}${s.lines.length > 2 ? ` +${s.lines.length - 2}` : ''}</b><small>${fmtTime(s.ts)} · ${esc(s.pay)}${s.customer ? ' · ' + esc(s.customer) : ''}</small></div>
               <span class="num">${fmt(s.total)}</span>
             </li>`).join('')}</ul>` : emptyState('No sales yet', 'Sales you record will show here.', '<a class="btn primary" href="#/sell">Make the first sale</a>')}
-        </section>`;
+        </section>        </div>
+        </div>`;
     };
     el.addEventListener('click', (e) => {
       const a = e.target.closest('[data-act]')?.dataset.act;

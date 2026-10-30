@@ -1016,3 +1016,76 @@ body.has-shift-bar .view { padding-top: calc(var(--top) + env(safe-area-inset-to
 }
 body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 64px); }
 .sg-card .btn.sg-again { background: rgb(255 255 255 / 10%); color: #fff; border-color: rgb(255 255 255 / 35%); }
+
+/* ======================================================================
+   Design pass 4.2: one main colour, one warning colour, stronger contrast
+   ====================================================================== */
+:root {
+  --primary: #0F4A2E; --primary-hover: #0B3A24; --on-primary: #FFFFFF;
+  --paper: #F1F3F0; --muted: #4A5950; --line: #D5DCD5; --line-strong: #BCC7BF;
+  --warn: #A34D00; --warn-2: #FDF0DD;
+  --shadow: 0 1px 2px rgb(20 33 27 / 7%), 0 2px 10px rgb(20 33 27 / 6%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --primary: #22B45E; --primary-hover: #1E9F53; --on-primary: #04130A; --muted: #A7B6AC; --line: #27362D; --line-strong: #364A3E; --warn: #F2B65A; }
+}
+:root[data-theme="dark"] { --primary: #22B45E; --primary-hover: #1E9F53; --on-primary: #04130A; --muted: #A7B6AC; --line: #27362D; --line-strong: #364A3E; --warn: #F2B65A; }
+
+/* One main button colour everywhere (accent = primary). */
+.btn.primary, .btn.accent, :root[data-theme] .btn.primary, :root[data-theme] .btn.accent { background: var(--primary); color: var(--on-primary); border-color: transparent; filter: none; }
+.btn.primary:hover:not(:disabled), .btn.accent:hover:not(:disabled), :root[data-theme] .btn.primary:hover:not(:disabled) { background: var(--primary-hover); filter: none; }
+.btn:disabled, .btn.primary:disabled, .btn.accent:disabled, :root[data-theme] .btn.primary:disabled { background: var(--surface-2); color: var(--muted); border-color: var(--line-strong); opacity: 1; }
+.cart-bar { background: var(--primary); color: var(--on-primary); }
+.tile-badge { background: var(--primary); color: var(--on-primary); }
+
+/* Losses and minus figures are always red, in light and dark. */
+.stats .stat-main.neg strong, .stats .neg strong, .line.total.neg dd, .neg { color: var(--bad) !important; }
+
+/* Warnings: one amber. Close-the-month is a normal card. */
+.closing-card { border-color: var(--line); }
+.warn-text, .stats .warn strong { color: var(--warn); }
+
+/* Cards stand out from the background. */
+.card, .stats, #stock-list, .tile { border-color: var(--line); }
+
+/* Phone menu: the current page is a soft pill behind the icon, not a dot. */
+@media (max-width: 899px) {
+  .nav a.on::before { display: none; }
+  .nav a .ic { box-sizing: content-box; padding: 3px 14px; border-radius: 999px; }
+  .nav a.on .ic { background: var(--green-2); }
+  .nav a { gap: 2px; }
+  .nav a[data-badge]:not([data-badge=""])::after { left: 58%; top: 3px; }
+}
+
+/* Start-up error: technical details folded away. */
+details.tech { margin-top: 14px; } details.tech summary { color: var(--muted); font-size: .8rem; cursor: pointer; }
+
+/* ---- Layout pass 4.2 ---- */
+/* Phone header: the shop name gets the room. */
+@media (max-width: 599px) {
+  .brand-sub { display: none; }
+  .brand-text #shop-name { font-size: 1.02rem; }
+  .sync { padding: 6px; background: transparent; }
+  .sync span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .sync i { width: 10px; height: 10px; }
+}
+/* Home: compact banners, alerts first, two independent columns on wide screens (no gaps). */
+.compact-banner, .install-card { display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; padding: 12px 14px; }
+.compact-banner .grow, .install-card .grow { flex: 1 1 220px; min-width: 0; }
+.compact-banner small, .install-card small { display: block; color: var(--muted); }
+.compact-banner .row-btns { margin: 0; }
+.view-home { display: block !important; }
+.home-cols { display: block; }
+@media (min-width: 1100px) {
+  .home-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; align-items: start; }
+}
+/* Sell: search first; till tools smaller and below the categories. */
+.pos-tools .btn { min-height: 36px; padding: 6px 12px; font-size: .86rem; }
+.pos-tools:not(:empty) { margin: 2px 0 12px; }
+@media (min-width: 900px) {
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  .tile { min-height: 104px; padding: 14px; }
+}
+/* Messages never hide the shift reminder. */
+body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 64px); }
+.cart-bar[hidden] { display: none !important; }

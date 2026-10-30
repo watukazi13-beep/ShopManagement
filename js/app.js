@@ -211,6 +211,7 @@ function paintChrome() {
       : store.pending ? ['busy', 'Syncing…'] : ['on', 'Synced'];
   sync.className = `sync ${cls}`;
   sync.innerHTML = `<i></i><span>${text}</span>`;
+  sync.title = text;
   const slot = document.getElementById('staff-slot');
   if (slot) {
     const chip = staffChip();
@@ -308,8 +309,9 @@ async function boot() {
       store.backend = await createFirebaseBackend(cfg);
     } catch (e) {
       console.error(e);
-      gate('Could not start', `<p>The app could not load its sync library. ${navigator.onLine ? 'Check the Firebase settings.' : 'Connect to the internet once so the app can finish installing.'}</p>
-        <p class="muted small">${esc(e.message)}</p><button class="btn primary block" onclick="location.reload()">Try again</button>`);
+      gate(navigator.onLine ? 'Could not open the shop' : 'No internet yet', `<p>${navigator.onLine ? 'The app could not reach its online service. Wait a moment and try again. If it keeps happening, tell the shop owner.' : 'Connect to the internet once so the app can finish installing. After that it works offline.'}</p>
+        <button class="btn primary block" onclick="location.reload()">Try again</button>
+        <details class="tech"><summary>Details for the developer</summary><p class="muted small">${esc(e.message)}</p></details>`);
       return;
     }
   } else {
