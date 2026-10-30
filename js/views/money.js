@@ -34,9 +34,9 @@ export default {
           <button class="icon-btn flip" data-m="1" aria-label="Next month">${icon('back')}</button>
         </div>
       </div>
-      <div class="seg tabs" role="tablist">
+      <div class="seg tabs money-tabs" role="tablist">
         <button data-tab="report">Profit</button>
-        <button data-tab="breakdown">Sales by…</button>
+        <button data-tab="breakdown">By item</button>
         <button data-tab="sales">Receipts</button>
         <button data-tab="expenses">Expenses</button>
         <button data-tab="losses">Losses</button>

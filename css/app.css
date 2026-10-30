@@ -1104,3 +1104,8 @@ body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 6
 /* Stock list: number and unit on one line; min/max only on phones (desktop has columns). */
 .table td small.unit { display: inline; margin-left: 2px; }
 @media (min-width: 640px) { .table td small.only-sm.levels { display: none; } }
+
+/* ---- Money tabs 4.4: every tab visible (two rows on phones, no hidden scroll) ---- */
+.money-tabs { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 4px; overflow: visible; width: 100%; padding: 4px; }
+.money-tabs button { white-space: nowrap; padding: 8px 4px; font-size: .86rem; min-width: 0; text-overflow: ellipsis; overflow: hidden; }
+@media (min-width: 900px) { .money-tabs { grid-template-columns: repeat(8, auto); width: auto; display: inline-grid !important; } .money-tabs button { padding: 8px 14px; } }
