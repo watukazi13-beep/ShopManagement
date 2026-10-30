@@ -1132,3 +1132,73 @@ body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 6
 .lang-switch.on-dark button { color: rgb(255 255 255 / 75%); }
 .lang-switch.on-dark button.on { background: rgb(255 255 255 / 20%); color: #fff; }
 .lang-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 6px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* ======================================================================
+   Calm palette 4.8 — neutral greys and white, green only where it matters
+   (main buttons, links, the current page, good news). Like a POS back office.
+   ====================================================================== */
+:root {
+  --forest: #2E7D32; --forest-2: #256B2A; --signal: #43A047;
+  --primary: #2E7D32; --primary-hover: #256B2A; --on-primary: #FFFFFF;
+  --paper: #F4F5F7; --surface: #FFFFFF; --surface-2: #F7F8FA;
+  --ink: #1F2933; --muted: #5B6670; --line: #E3E6EA; --line-strong: #CDD2D8;
+  --green: #2E7D32; --green-2: #EAF4EB; --on-green: #FFFFFF; --maize: #43A047;
+  --good: #2E7D32; --good-2: #E8F5E9;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 6%);
+  --shadow-lg: 0 12px 32px rgb(16 24 40 / 16%);
+  --slate: #1F2933; --slate-2: #111827;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111418; --surface: #191D22; --surface-2: #20252B; --ink: #E7EAEE; --muted: #A2ABB5; --line: #2A3038; --line-strong: #39414B;
+    --green: #66BB6A; --green-2: #1C2A1F; --primary: #43A047; --primary-hover: #388E3C; --on-primary: #FFFFFF; --good: #66BB6A; --good-2: #1C2A1F;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111418; --surface: #191D22; --surface-2: #20252B; --ink: #E7EAEE; --muted: #A2ABB5; --line: #2A3038; --line-strong: #39414B;
+  --green: #66BB6A; --green-2: #1C2A1F; --primary: #43A047; --primary-hover: #388E3C; --on-primary: #FFFFFF; --good: #66BB6A; --good-2: #1C2A1F;
+}
+
+/* Top bar: plain white. */
+.topbar { background: color-mix(in srgb, var(--surface) 96%, transparent); border-bottom: 1px solid var(--line); }
+.sync { background: var(--surface-2); }
+
+/* Desktop side menu: white with a thin line, green only on the current page. */
+@media (min-width: 900px) {
+  .nav, :root[data-theme] .nav { background: var(--surface) !important; border-right: 1px solid var(--line); color: var(--ink); }
+  .nav a { color: var(--muted); }
+  .nav a:hover { color: var(--ink); background: var(--surface-2); }
+  .nav a.on { color: var(--green); background: var(--green-2); font-weight: 600; }
+  .nav a.on::before { background: var(--green); left: -12px; width: 3px; height: 22px; top: calc(50% - 11px); border-radius: 0 3px 3px 0; }
+  .nav-brand { color: var(--ink) !important; }
+  .nav-brand img { content: url("../brand/symbol.svg"); }
+  .nav-credit { color: var(--muted); border-top-color: var(--line); }
+  .nav-credit img { content: url("../brand/developers-logo.svg"); }
+  .nav a[data-badge]:not([data-badge=""])::after { background: var(--bad); color: #fff; }
+}
+@media (min-width: 900px) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .nav-brand img { content: url("../brand/symbol-on-dark.svg"); }
+  :root:not([data-theme="light"]) .nav-credit img { content: url("../brand/developers-logo-on-dark.svg"); }
+}
+@media (min-width: 900px) {
+  :root[data-theme="dark"] .nav-brand img { content: url("../brand/symbol-on-dark.svg"); }
+  :root[data-theme="dark"] .nav-credit img { content: url("../brand/developers-logo-on-dark.svg"); }
+}
+
+/* Phone menu: white bar, green on the current page only. */
+.nav a.on { color: var(--green); }
+
+/* Selected chips, tiles and the main figure: green accents, not green blocks. */
+.chip.on, .chip:has(input:checked), :root[data-theme] .chip.on { background: var(--green-2) !important; border-color: var(--green) !important; color: var(--green) !important; }
+.tile-price { color: var(--ink); }
+.tile.in { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+.stats .stat-main strong { color: var(--ink); }
+.hero-label::before { background: var(--green); }
+.install-card, .getting-started, .compact-banner { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.seg button.on { color: var(--ink); }
+
+/* Full screens (loading, PIN lock, open shift, sign-in panel): calm slate, not green. */
+.splash, #staff-lock, #shift-gate { background: radial-gradient(120% 80% at 50% 30%, #2A3540 0%, var(--slate) 55%, var(--slate-2) 100%) !important; }
+.pin-dots i.on { background: var(--signal); border-color: var(--signal); }
+@media (min-width: 900px) { .gate-brand { background: var(--slate) !important; } }
+.card.soft.getting-started, .card.soft.compact-banner, .card.install-card { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
