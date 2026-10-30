@@ -42,6 +42,18 @@ with sync_playwright() as p:
     def dlg():
         return pg.locator('dialog[open]').last
 
+    def open_sections():
+        pg.evaluate("document.querySelectorAll('#shop-form details').forEach((d) => d.open = true)")
+
+    def stock_tool(name):
+        # Wide screens show the button; phones keep it under "More".
+        b = pg.locator(f'.head-actions [data-act={name}]')
+        if b.is_visible(): b.click()
+        else:
+            pg.click('[data-act=tools]'); pg.wait_for_timeout(200)
+            dlg().locator(f'[data-tool={name}]').click()
+        pg.wait_for_timeout(150)
+
     def submit(label, review=False):
         dlg().get_by_role('button', name=label, exact=True).click(); pg.wait_for_timeout(250)
         if label in ('Receive into stock', 'Add to stock') and not review:
@@ -89,7 +101,7 @@ with sync_playwright() as p:
 
     # --- Light / dark theme
     bg = lambda: pg.evaluate("getComputedStyle(document.body).backgroundColor")
-    check(bg() == 'rgb(239, 241, 236)', 'light theme by default (device is light)')
+    check(bg() == 'rgb(241, 243, 240)', 'light theme by default (device is light)')
     pg.click('[data-theme-pick=dark]'); pg.wait_for_timeout(150)
     check(pg.evaluate("document.documentElement.dataset.theme") == 'dark' and bg() == 'rgb(11, 18, 14)', 'choosing Dark turns the app dark')
     pg.screenshot(path=OUT + 'dark-settings.png')
@@ -97,13 +109,13 @@ with sync_playwright() as p:
     check(bg() == 'rgb(11, 18, 14)' and pg.locator('[data-theme-pick=dark].on').count() == 1, 'Dark is remembered after reopening')
     go('#/home'); pg.wait_for_timeout(200); pg.screenshot(path=OUT + 'dark-home.png', full_page=True)
     pg.click('#theme-btn'); pg.wait_for_timeout(150)
-    check(bg() == 'rgb(239, 241, 236)', 'the top-bar button switches back to light')
+    check(bg() == 'rgb(241, 243, 240)', 'the top-bar button switches back to light')
     go('#/settings'); pg.click('[data-theme-pick=auto]'); pg.wait_for_timeout(150)
     check(pg.evaluate("document.documentElement.dataset.theme") is None and pg.evaluate("localStorage.getItem('theme')") is None, 'Automatic follows the device again')
     pg.emulate_media(color_scheme='dark'); pg.wait_for_timeout(150)
     check(bg() == 'rgb(11, 18, 14)', 'Automatic turns dark when the device is dark')
     pg.click('[data-theme-pick=light]'); pg.wait_for_timeout(150)
-    check(bg() == 'rgb(239, 241, 236)', 'Light stays light even when the device is dark')
+    check(bg() == 'rgb(241, 243, 240)', 'Light stays light even when the device is dark')
     pg.click('[data-theme-pick=auto]'); pg.emulate_media(color_scheme='light'); pg.wait_for_timeout(150)
 
     # --- Supplier
@@ -302,7 +314,7 @@ with sync_playwright() as p:
            'tshirt,10002,T-shirt,Clothes,N,Size,M,15000,9000,,5,2,\n'
            'tshirt,10003,,Clothes,N,Size,L,15000,9000,,4,2,\n'
            'sugar-1kg,,Sugar 1kg,Groceries,N,,,3200,2500,,,5,\n')
-    go('#/stock'); pg.click('[data-act=import]'); pg.wait_for_timeout(200)
+    go('#/stock'); stock_tool('import'); pg.wait_for_timeout(200)
     dlg().locator('input[type=file]').set_input_files(files=[{'name': 'export_items.csv', 'mimeType': 'text/csv', 'buffer': csv.encode()}])
     pg.wait_for_timeout(300)
     check('4' in dlg().locator('#imp-preview').inner_text(), 'import preview finds 4 rows')
@@ -320,7 +332,7 @@ with sync_playwright() as p:
             'photocopy,10050,Photocopy,Offline Serives,N,100,0,,,\n'
             'online-app,10051,online Application,Goods,N,,0,,,\n'
             'chalk,10024,Chalk,Goods,Y,25,10,162,50,300\n')
-    pg.evaluate("sessionStorage.removeItem('cart')"); go('#/home'); go('#/stock'); pg.click('[data-act=import]'); pg.wait_for_timeout(200)
+    pg.evaluate("sessionStorage.removeItem('cart')"); go('#/home'); go('#/stock'); stock_tool('import'); pg.wait_for_timeout(200)
     dlg().locator('input[type=file]').set_input_files(files=[{'name': 'export_items.csv', 'mimeType': 'text/csv', 'buffer': csv2.encode()}])
     pg.wait_for_timeout(300); submit('Import'); pg.wait_for_timeout(300)
     check(item(pg, 'Photocopy')['service'] is True and item(pg, 'Photocopy')['stock'] == 0, 'Track stock = N imported as a service')
@@ -333,7 +345,7 @@ with sync_playwright() as p:
     check('Enter price' in pg.locator('.tile', has_text='online Application').inner_text(), 'variable-price tile says Enter price')
 
     # --- Sample CSV, and imports that only change what is filled in
-    go('#/stock'); pg.click('[data-act=import]'); pg.wait_for_timeout(200)
+    go('#/stock'); stock_tool('import'); pg.wait_for_timeout(200)
     with pg.expect_download() as dl:
         dlg().locator('[data-sample]').click()
     sample = open(dl.value.path(), encoding='utf-8-sig').read()
@@ -347,7 +359,7 @@ with sync_playwright() as p:
     check(prn['service'] is True and prn['variablePrice'] is True, 'sample service with price at sale')
     sugar0 = item(pg, 'Sugar 1kg')
     levels_csv = 'Name,Price,Cost,In stock,Minimum stock,Maximum stock\nSugar 1kg,,,,7,21\n'
-    go('#/stock'); pg.click('[data-act=import]'); pg.wait_for_timeout(200)
+    go('#/stock'); stock_tool('import'); pg.wait_for_timeout(200)
     dlg().locator('input[type=file]').set_input_files(files=[{'name': 'levels.csv', 'mimeType': 'text/csv', 'buffer': levels_csv.encode()}])
     pg.wait_for_timeout(300)
     check('1 to update' in dlg().locator('#imp-preview').inner_text(), 'preview says the row updates an existing item')
@@ -368,7 +380,7 @@ with sync_playwright() as p:
     pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
 
     # --- Minimum / maximum stock levels
-    go('#/stock'); pg.click('[data-act=levels]'); pg.wait_for_timeout(250)
+    go('#/stock'); stock_tool('levels'); pg.wait_for_timeout(250)
     row = dlg().locator('tr', has_text='Chalk')
     row.locator('.lv-min').fill('200'); row.locator('.lv-max').fill('150')
     submit('Save levels')
@@ -461,7 +473,7 @@ with sync_playwright() as p:
 
     # --- Customers, credit, % discount, VAT, refunds and sales reports
     go('#/settings')
-    pg.fill('#shop-form [name=taxRate]', '18'); pg.fill('#shop-form [name=receiptFooter]', 'Asante sana!')
+    open_sections(); pg.fill('#shop-form [name=taxRate]', '18'); pg.fill('#shop-form [name=receiptFooter]', 'Asante sana!')
     pg.click('#shop-form button.primary'); pg.wait_for_timeout(300)
     def sell(names, pay='Cash', discount='', customer=''):
         go('#/sell')
@@ -527,11 +539,11 @@ with sync_playwright() as p:
     go('#/money?tab=sales'); pg.fill('#rc-q', 'Refund'); pg.wait_for_timeout(300)
     pg.fill('#rc-q', 'Sugar'); pg.wait_for_timeout(300)
     check('Refund' in pg.locator('main').inner_text(), 'receipts list shows refunds and can be searched')
-    go('#/settings'); pg.fill('#shop-form [name=taxRate]', '0'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(200)
+    go('#/settings'); open_sections(); pg.fill('#shop-form [name=taxRate]', '0'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(200)
 
     # --- Stock count of many items
     chalk0 = item(pg, 'Chalk')['stock']; rice0 = item(pg, 'Rice')['stock']
-    go('#/stock'); pg.click('[data-act=count]'); pg.wait_for_timeout(300)
+    go('#/stock'); stock_tool('count'); pg.wait_for_timeout(300)
     dlg().locator('tr', has_text='Chalk').locator('.ct-n').fill(str(chalk0 - 5))
     dlg().locator('tr', has_text='Rice').locator('.ct-n').fill(str(rice0))
     check('2 counted · 1 different' in dlg().locator('#ct-sum').inner_text(), 'count screen shows what differs')
@@ -555,7 +567,7 @@ with sync_playwright() as p:
     pg.locator('[data-clear]').first.dispatch_event('click'); pg.wait_for_timeout(100)
 
     # --- Shifts: open with a float, sell for cash, take cash out, close with a count
-    go('#/settings'); pg.check('#shop-form [name=useShifts]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(300)
+    go('#/settings'); open_sections(); pg.check('#shop-form [name=useShifts]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(300)
     go('#/sell')
     check('No shift open' in pg.locator('#pos-tools').inner_text(), 'Sell asks to open a shift')
     pg.locator('#pos-tools [data-shift]').click(); pg.wait_for_timeout(200)
@@ -577,7 +589,7 @@ with sync_playwright() as p:
     submit('Close shift'); pg.wait_for_timeout(300)
     sh = list(data(pg)['shifts'].values())[-1]
     check(sh.get('closedAt') and sh['difference'] == -500 and sh['expectedCash'] == expected, 'shift closed and saved with the difference')
-    go('#/settings'); pg.uncheck('#shop-form [name=useShifts]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(200)
+    go('#/settings'); open_sections(); pg.uncheck('#shop-form [name=useShifts]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(200)
 
     # --- Weekly purchase orders (run on the first open of the week)
     pg.evaluate("""(()=>{const d=JSON.parse(localStorage.getItem('shop-local-data-v1')); d.meta.settings.lastAutoPo='2000-01-03';
@@ -821,7 +833,7 @@ with sync_playwright() as p:
     check('Closed' in pg.locator('.day-card').inner_text(), 'Home shows the day as closed')
     go('#/money?tab=days'); pg.wait_for_timeout(300)
     check('Short' in pg.locator('#money-body').inner_text(), 'Money → Days lists the closed day')
-    pg.evaluate("import('/js/store.js').then(({ store }) => { const d = new Date(); d.setDate(d.getDate() + 1); window.__open2 = store.openingCashFor(d.toISOString().slice(0, 10)); })"); pg.wait_for_timeout(200)
+    pg.evaluate("import('/js/store.js').then(({ store }) => { const d = new Date(); d.setDate(d.getDate() + 1); const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); window.__open2 = store.openingCashFor(k); })"); pg.wait_for_timeout(200)
     check(pg.evaluate('window.__open2') == cash_exp - 3000, "tomorrow starts with the cash left in the drawer")
 
     # --- A service that uses stock: photocopy uses paper

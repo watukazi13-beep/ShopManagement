@@ -230,7 +230,7 @@ with sync_playwright() as p:
     check(next(i for i in docs(main, 'items') if i['name'] == 'Unga 2kg')['price'] == unga_price, f'restore from the daily snapshot puts the price back ({unga_price})')
     if dlg().count(): pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
     go('#/settings')
-    pg.check('#shop-form [name=staffCanReceive]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(400)
+    pg.evaluate("document.querySelectorAll('#shop-form details').forEach((d) => d.open = true)"); pg.check('#shop-form [name=staffCanReceive]'); pg.click('#shop-form button.primary'); pg.wait_for_timeout(400)
     check(fs()[f'shops/{main}/meta/settings'].get('staffCanReceive') is True, 'sellers allowed to receive deliveries')
     sign_out(); sign_in(SELLER)
     go('#/stock'); pg.click('[data-f=incoming]'); pg.wait_for_timeout(300)
