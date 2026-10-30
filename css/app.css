@@ -1109,3 +1109,17 @@ body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 6
 .money-tabs { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 4px; overflow: visible; width: 100%; padding: 4px; }
 .money-tabs button { white-space: nowrap; padding: 8px 4px; font-size: .86rem; min-width: 0; text-overflow: ellipsis; overflow: hidden; }
 @media (min-width: 900px) { .money-tabs { grid-template-columns: repeat(8, auto); width: auto; display: inline-grid !important; } .money-tabs button { padding: 8px 14px; } }
+
+/* ---- Settings 4.5: sections that open and close, Save in each, unsaved-changes bar ---- */
+.set-sec { border-top: 1px solid var(--line); }
+.set-sec:first-of-type { border-top: 0; }
+.set-sec > summary { list-style: none; cursor: pointer; padding: 14px 28px 14px 0; font-weight: 650; position: relative; }
+.set-sec > summary::-webkit-details-marker { display: none; }
+.set-sec > summary small { display: block; font-weight: 400; color: var(--muted); font-size: .8rem; margin-top: 2px; }
+.set-sec > summary::after { content: ""; position: absolute; right: 6px; top: 50%; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: translateY(-70%) rotate(45deg); transition: transform .15s; }
+.set-sec[open] > summary::after { transform: translateY(-30%) rotate(-135deg); }
+.set-sec[open] { padding-bottom: 14px; }
+.sec-save { display: flex; justify-content: flex-end; margin-top: 12px; }
+.unsaved-bar { display: none; }
+.set-form.dirty .unsaved-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; bottom: calc(var(--bottom) + env(safe-area-inset-bottom) + 10px); margin: 14px -6px 0; padding: 10px 12px; border-radius: 12px; background: var(--warn-2); color: var(--warn); font-weight: 600; box-shadow: var(--shadow-lg); z-index: 5; }
+@media (min-width: 900px) { .set-form.dirty .unsaved-bar { bottom: 16px; } }

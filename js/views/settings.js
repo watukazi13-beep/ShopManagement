@@ -73,8 +73,9 @@ export default {
 
         ${boss ? `
         <section class="card setup-card"><div class="grow"><b>Shop setup</b><small>Step by step: details and logo, payments, receipts, categories, restocking, people, items.</small></div><button type="button" class="btn ghost" data-act="setup">Open setup</button></section>
-        <form class="card" id="shop-form">
-          <div class="card-head"><h2>Shop details</h2></div>
+        <form class="card set-form" id="shop-form">
+          <div class="card-head"><h2>Shop settings</h2></div>
+          <details class="set-sec" open><summary>Shop details<small>Name, phone, address, TIN</small></summary>
           <p class="muted small">Printed on receipts and quotation requests.</p>
           ${field('Shop name', `<input name="shopName" required value="${esc(s.shopName)}">`)}
           <div class="grid2">
@@ -85,7 +86,8 @@ export default {
             ${field('Address', `<input name="address" value="${esc(s.address)}">`)}
             ${field('TIN', `<input name="tin" value="${esc(s.tin)}">`)}
           </div>
-          <h3>Receipts and tax</h3>
+          <div class="sec-save"><button class="btn primary">Save</button></div></details>
+          <details class="set-sec"><summary>Receipts and tax<small>Header, footer, VAT, how customers pay</small></summary>
           <div class="grid2">
             ${field('Receipt header', `<input name="receiptHeader" value="${esc(s.receiptHeader || '')}" placeholder="e.g. Karibu!">`)}
             ${field('Receipt footer', `<input name="receiptFooter" value="${esc(s.receiptFooter || 'Thank you!')}">`)}
@@ -95,7 +97,8 @@ export default {
             ${field('Tax rate (%) included in prices', `<input name="taxRate" type="number" inputmode="decimal" min="0" max="50" step="any" value="${s.taxRate || 0}">`, '0 = no tax shown. Tanzania VAT is 18% for registered businesses.')}
           </div>
           ${field('How customers can pay you (shown on invoices)', `<textarea name="paymentDetails" rows="2" placeholder="e.g. M-Pesa Lipa Namba 123456 · NMB account 2010…">${esc(s.paymentDetails || '')}</textarea>`)}
-          <h3>Restocking</h3>
+          <div class="sec-save"><button class="btn primary">Save</button></div></details>
+          <details class="set-sec"><summary>Restocking and orders<small>Delivery time, automatic requests and orders</small></summary>
           <div class="grid3">
             ${field('Supplier delivery time (days)', `<input name="leadDays" type="number" min="1" value="${s.leadDays}">`, 'Alert early enough to cover this')}
             ${field('Order enough for (days)', `<input name="coverDays" type="number" min="1" value="${s.coverDays}">`, 'After the delivery arrives')}
@@ -108,14 +111,18 @@ export default {
             <label class="check"><input type="checkbox" name="autoWeeklyPo" ${s.autoWeeklyPo !== false ? 'checked' : ''}> Draft purchase orders every week for items below their minimum, on</label>
             <select name="weeklyPoDay" aria-label="Day of the week">${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => `<option value="${i}" ${Number(s.weeklyPoDay ?? 1) === i ? 'selected' : ''}>${d}</option>`).join('')}</select>
           </div>
+          <div class="sec-save"><button class="btn primary">Save</button></div></details>
+          <details class="set-sec"><summary>Shifts and sellers<small>Opening and closing the drawer, what sellers may do</small></summary>
           <label class="check"><input type="checkbox" name="useShifts" ${s.useShifts ? 'checked' : ''}> Use shifts: count the cash drawer when opening and closing</label>
           <label class="check"><input type="checkbox" name="sellerMustOpenShift" ${s.sellerMustOpenShift !== false ? 'checked' : ''}> Sellers must open a shift (count the drawer) before they can use the app</label>
           <div class="field inline"><label for="st-close">Remind to close the shift at</label><input id="st-close" name="closeShiftAt" type="time" value="${esc(s.closeShiftAt || '19:30')}" style="max-width:130px"></div>
           <label class="check"><input type="checkbox" name="staffCanReceive" ${s.staffCanReceive ? 'checked' : ''}> Sellers can receive deliveries into stock (otherwise only owners and managers)</label>
-          <h3>Lists</h3>
+          <div class="sec-save"><button class="btn primary">Save</button></div></details>
+          <details class="set-sec"><summary>Lists<small>Payment methods, expense categories</small></summary>
           ${field('Payment methods', `<input name="payMethods" value="${esc((s.payMethods || []).join(', '))}">`, 'Separate with commas')}
           ${field('Expense categories', `<input name="expenseCategories" value="${esc((s.expenseCategories || []).join(', '))}">`, 'Separate with commas')}
-          <div class="row-btns"><button class="btn primary">Save settings</button></div>
+          <div class="sec-save"><button class="btn primary">Save</button></div></details>
+          <div class="unsaved-bar" role="status"><span>You have unsaved changes</span><button class="btn primary">Save settings</button></div>
         </form>
 
         ${backupCard()}` : ''}
@@ -133,6 +140,9 @@ export default {
         </section>`;
 
       wireTillCard(el, draw);
+      const shopForm = el.querySelector('#shop-form');
+      shopForm?.addEventListener('input', () => shopForm.classList.add('dirty'));
+      shopForm?.addEventListener('change', () => shopForm.classList.add('dirty'));
       el.querySelector('#shop-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         const v = Object.fromEntries(new FormData(e.target).entries());
@@ -145,6 +155,7 @@ export default {
           payMethods: list(v.payMethods).length ? list(v.payMethods) : ['Cash'],
           expenseCategories: list(v.expenseCategories),
         });
+        e.target.classList.remove('dirty');
         toast('Settings saved');
       });
       el.querySelector('#add-member')?.addEventListener('submit', (e) => {
