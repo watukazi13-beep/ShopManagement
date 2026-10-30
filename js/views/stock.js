@@ -159,7 +159,8 @@ export function openItemForm(item = null) {
     title: item ? `Edit ${item.name}` : 'Add item',
     body: `
       ${field('Name', `<input name="name" required autofocus value="${esc(it.name)}" placeholder="e.g. Sugar 1kg">`)}
-      <fieldset class="group buy-group"><legend>How you buy it</legend>
+      <fieldset class="group buy-group"><legend>How you sell and buy it</legend>
+        ${field('You sell it by the', `<input name="unit" list="unit-list" value="${esc(it.unit || 'pcs')}" placeholder="pcs"><datalist id="unit-list">${UNITS.map((u) => `<option value="${u}">`).join('')}</datalist>`, 'e.g. pcs, ream, bottle, roll')}
         <div class="grid2">
           ${field('Buying unit', `<select name="buyKind">${buyKinds.map(([v, t]) => `<option value="${v}" ${v === kind ? 'selected' : ''}>${t}</option>`).join('')}</select>`, 'How the wholesaler sells it to you')}
           ${field('Other unit name', `<input name="buyOther" value="${esc(kind === 'other' ? it.buyUnit : '')}" placeholder="e.g. tray, sack, tin">`)}
@@ -175,10 +176,7 @@ export function openItemForm(item = null) {
         ${fieldHtml('Cost per <span data-pc>' + esc(it.unit || 'pcs') + '</span> (TSh)', `<input name="cost" type="number" inputmode="decimal" min="0" step="any" value="${it.cost !== undefined ? Math.round(num(it.cost) * 100) / 100 : ''}">`, item ? 'Updates automatically when you receive stock' : 'What one piece costs you')}
       </div>
       <label class="check"><input type="checkbox" name="variablePrice" ${it.variablePrice ? 'checked' : ''}> Price is entered at the time of sale</label>
-      <div class="grid2">
-        ${field('Category', `<input name="category" list="cat-list" value="${esc(it.category)}" placeholder="e.g. Groceries"><datalist id="cat-list">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`)}
-        ${field('Unit', `<input name="unit" list="unit-list" value="${esc(it.unit)}"><datalist id="unit-list">${UNITS.map((u) => `<option value="${u}">`).join('')}</datalist>`)}
-      </div>
+      ${field('Category', `<input name="category" list="cat-list" value="${esc(it.category)}" placeholder="e.g. Groceries"><datalist id="cat-list">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`)}
       ${item ? '' : field('Opening stock', '<input name="stock" type="number" inputmode="decimal" step="any" value="0">', 'How many you have right now')}
       <fieldset class="group"><legend>Restocking</legend>
         <div class="grid2">
