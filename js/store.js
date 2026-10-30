@@ -799,7 +799,11 @@ export const store = {
 
   // ---------- Shifts (cash drawer) ----------
   myOpenShift() { return this.data.shifts.find((s) => !s.closedAt && s.by === this.user?.email && (s.staffId || '') === (this.activeStaff?.id || '')); },
-  shiftFigures(shift) { return shiftExpected(shift, this.data.sales, this.data.payments, { cashName: (this.settings.payMethods || ['Cash'])[0] || 'Cash' }); },
+  shiftFigures(shift) { return shiftExpected(shift, this.data.sales, this.data.payments, { cashName: (this.settings.payMethods || ['Cash'])[0] || 'Cash', expenses: this.data.expenses }); },
+  /** The seller's last closed shift (for "last time you counted…"). */
+  myLastClosedShift() {
+    return this.data.shifts.filter((s) => s.closedAt && s.by === this.user?.email && (s.staffId || '') === (this.activeStaff?.id || '')).sort((a, b) => b.closedAt - a.closedAt)[0] || null;
+  },
   openShift(openingCash) {
     if (this.myOpenShift()) throw new Error('You already have an open shift');
     const ts = Date.now();

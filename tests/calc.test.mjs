@@ -267,3 +267,11 @@ import { dayClose, dayKey } from '../js/calc.js';
   assert.equal(dc.rows.some((r) => r.method === 'Credit'), false, 'credit is not a money line');
 }
 console.log('Day close tests passed');
+
+{
+  const { shiftExpected } = await import('../js/calc.js');
+  const sh = { ts: 1000, by: 'a@x', openingCash: 10000 };
+  const f = shiftExpected(sh, [{ ts: 2000, by: 'a@x', pay: 'Cash', total: 5000 }], [], { expenses: [{ ts: 3000, by: 'a@x', payout: true, paidFrom: 'Cash', amount: 2100 }, { ts: 3000, by: 'a@x', payout: true, paidFrom: 'M-Pesa', amount: 900 }] });
+  if (f.expected !== 12900 || f.cashPayouts !== 2100) throw new Error('shift pay-outs ' + JSON.stringify(f));
+  console.log('Shift pay-out tests passed');
+}

@@ -333,7 +333,7 @@ export function salesBreakdown(sales, [from, to], by, itemCategory = () => '') {
  * Cash a drawer should hold at the end of a shift:
  * opening cash + cash sales − cash refunds + customer payments in cash + cash put in − cash taken out.
  */
-export function shiftExpected(shift, sales = [], payments = [], { cashName = 'Cash' } = {}) {
+export function shiftExpected(shift, sales = [], payments = [], { cashName = 'Cash', expenses = [] } = {}) {
   const from = num(shift.ts);
   const to = num(shift.closedAt) || Infinity;
   // On a shared till several staff use one account: a shift then counts only its staff member's sales.
@@ -350,10 +350,12 @@ export function shiftExpected(shift, sales = [], payments = [], { cashName = 'Ca
   const moves = shift.moves || [];
   const cashIn = moves.filter((m) => m.type === 'in').reduce((t, m) => t + num(m.amount), 0);
   const cashOut = moves.filter((m) => m.type === 'out').reduce((t, m) => t + num(m.amount), 0);
-  const expected = num(shift.openingCash) + cashSales - cashRefunds + cashPayments + cashIn - cashOut;
+  // Pay-outs (food, transport…) taken from the drawer during the shift.
+  const cashPayouts = expenses.filter((e) => e.payout && mine(e) && isCash(e.paidFrom || cashName)).reduce((t, e) => t + num(e.amount), 0);
+  const expected = num(shift.openingCash) + cashSales - cashRefunds + cashPayments + cashIn - cashOut - cashPayouts;
   return {
     count, cashSales: money(cashSales), cashRefunds: money(cashRefunds), otherSales: money(otherSales),
-    cashPayments: money(cashPayments), cashIn: money(cashIn), cashOut: money(cashOut), expected: money(expected),
+    cashPayments: money(cashPayments), cashIn: money(cashIn), cashOut: money(cashOut), cashPayouts: money(cashPayouts), expected: money(expected),
   };
 }
 

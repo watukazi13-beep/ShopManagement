@@ -458,6 +458,7 @@ export function openShiftPanel() {
         ${f.cashPayments ? `<tr><td>Customer payments in cash</td><td class="r num">+${fmt(f.cashPayments)}</td></tr>` : ''}
         ${f.cashIn ? `<tr><td>Cash put in</td><td class="r num">+${fmt(f.cashIn)}</td></tr>` : ''}
         ${f.cashOut ? `<tr><td>Cash taken out</td><td class="r num">−${fmt(f.cashOut)}</td></tr>` : ''}
+        ${f.cashPayouts ? `<tr><td>Pay-outs from the drawer (food, transport…)</td><td class="r num">−${fmt(f.cashPayouts)}</td></tr>` : ''}
         <tr class="tot"><td>Expected in drawer</td><td class="r num">${fmt(f.expected)}</td></tr>
         <tr><td class="muted">Other payments (M-Pesa, card, credit…)</td><td class="r num muted">${fmt(f.otherSales)}</td></tr>
       </table>
@@ -487,7 +488,8 @@ export function openCloseShift(sh = store.myOpenShift()) {
   modal({
     title: 'Close shift',
     body: `<p class="small">Shift opened ${fmtTime(sh.ts)}${sh.date !== dayKey() ? ` on ${esc(sh.date)}` : ''} · opening cash ${fmt(sh.openingCash)}</p>
-      <p>Expected in the drawer: <b>${fmt(f.expected)}</b></p>${field('Cash counted (TSh)', '<input name="counted" type="number" inputmode="numeric" min="0" step="1" required autofocus>')}<p id="cs-diff" class="small"></p>${field('Note (optional)', '<input name="note">')}`,
+      <p>Expected in the drawer: <b>${fmt(f.expected)}</b></p>
+      <p class="small muted">Opening cash ${fmt(sh.openingCash)} + cash sales ${fmt(f.cashSales)}${f.cashPayments ? ` + customer payments ${fmt(f.cashPayments)}` : ''}${f.cashIn ? ` + put in ${fmt(f.cashIn)}` : ''}${f.cashRefunds ? ` − refunds ${fmt(f.cashRefunds)}` : ''}${f.cashOut ? ` − taken out ${fmt(f.cashOut)}` : ''}${f.cashPayouts ? ` − pay-outs ${fmt(f.cashPayouts)}` : ''}. Count all the money in the drawer, including the opening cash.</p>${field('Cash counted (TSh)', '<input name="counted" type="number" inputmode="numeric" min="0" step="1" required autofocus>')}<p id="cs-diff" class="small"></p>${field('Note (optional)', '<input name="note">')}`,
     actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Close shift</button>',
     onMount: (d2) => d2.addEventListener('input', () => {
       const v = d2.querySelector('[name=counted]').value;

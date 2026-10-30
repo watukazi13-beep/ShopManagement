@@ -1015,3 +1015,4 @@ body.has-shift-bar .view { padding-top: calc(var(--top) + env(safe-area-inset-to
   body.has-shift-bar .view { padding-top: calc(var(--top) + 84px); }
 }
 body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 64px); }
+.sg-again { background: rgb(255 255 255 / 10%); color: #fff; border-color: rgb(255 255 255 / 35%); }

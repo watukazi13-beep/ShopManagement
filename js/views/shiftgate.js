@@ -30,10 +30,16 @@ export function gateState() {
   if (!store.ready || !store._loaded.has('shifts') || !shiftRequired()) return null;
   if (isSharedTill() && !store.activeStaff) return null; // the PIN screen comes first
   const sh = store.myOpenShift();
-  if (!sh) return { mode: 'open' };
+  if (!sh) {
+    // Closed this evening: no new shift until tomorrow, unless the seller asks for one.
+    const last = store.myLastClosedShift();
+    if (last && dayKey(last.ts) === dayKey() && dayKey(last.closedAt) === dayKey() && SS(`shift-again:${dayKey()}`) !== '1') return { mode: 'closed', last };
+    return { mode: 'open', last };
+  }
   if ((sh.date || dayKey(sh.ts)) !== dayKey()) return { mode: 'stale', sh };
   return null;
 }
+const SS = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch { return null; } return null; };
 
 /** The evening reminder for whoever has a shift open: null, or { text, stale }. */
 export function reminderState() {
@@ -51,7 +57,7 @@ let gateEl = null, gateKey = '', hooks = {};
 export function checkShiftGate(h = hooks) {
   hooks = h;
   const st = gateState();
-  const key = st ? `${st.mode}:${st.sh?.id || ''}:${store.activeStaff?.id || ''}` : '';
+  const key = st ? `${st.mode}:${st.sh?.id || ''}:${st.last?.id || ''}:${store.activeStaff?.id || ''}` : '';
   if (key === gateKey) return;
   gateKey = key;
   gateEl?.remove();
@@ -63,7 +69,7 @@ export function checkShiftGate(h = hooks) {
   gateEl.id = 'shift-gate';
   gateEl.setAttribute('role', 'dialog');
   gateEl.setAttribute('aria-modal', 'true');
-  gateEl.setAttribute('aria-label', st.mode === 'open' ? 'Open your shift' : 'Close the earlier shift');
+  gateEl.setAttribute('aria-label', st.mode === 'open' ? 'Open your shift' : st.mode === 'closed' ? 'Shift closed for today' : 'Close the earlier shift');
   const shop = esc(store.settings.shopName || store.shop?.name || 'Shop');
   const links = `<div class="sg-links">${isSharedTill() ? '<button type="button" data-switch>Change person</button>' : ''}<button type="button" data-signout>Sign out</button></div>`;
   if (st.mode === 'open') {
@@ -73,11 +79,23 @@ export function checkShiftGate(h = hooks) {
         <p class="muted">${shop} · ${fmtDate(Date.now())}</p>
         <h1>${greeting()}${firstName() ? `, ${esc(firstName())}` : ''}</h1>
         <p class="muted">Open your shift to start selling. Count the money in the drawer first.</p>
+        ${st.last ? `<div class="sg-expect"><span>Last count, ${dayKey(st.last.closedAt) === dayKey() ? 'today' : fmtDate(st.last.closedAt)} ${fmtTime(st.last.closedAt)}</span><b>${fmt(st.last.countedCash)}</b></div>
+        <p class="muted small">If no money was added or taken out since, the drawer should still have this.</p>` : ''}
         <label class="sg-field"><span>Cash in the drawer now (TSh)</span>
-          <input name="cash" type="number" inputmode="numeric" min="0" step="1" required placeholder="e.g. 20000"></label>
+          <input name="cash" type="number" inputmode="numeric" min="0" step="1" required placeholder="Count the drawer"></label>
         <p class="pin-err" id="sg-err" role="alert"></p>
         <button class="btn accent big block">${icon('check')}Open shift</button>
         <p class="muted small">You'll be reminded to close it at ${closeTime()}.</p>
+        ${links}
+      </form>`;
+  } else if (st.mode === 'closed') {
+    gateEl.innerHTML = `
+      <form class="lock-card sg-card" novalidate>
+        <img src="brand/book-icon.svg" alt="" width="56" height="56">
+        <p class="muted">${shop} · ${fmtDate(Date.now())}</p>
+        <h1>Shift closed for today</h1>
+        <p class="muted">You closed at <b>${fmtTime(st.last.closedAt)}</b> and counted <b>${fmt(st.last.countedCash)}</b>. Thank you${firstName() ? `, ${esc(firstName())}` : ''} — see you tomorrow.</p>
+        <button type="button" class="btn ghost block sg-again" data-again>Open another shift today</button>
         ${links}
       </form>`;
   } else {
@@ -103,7 +121,9 @@ export function checkShiftGate(h = hooks) {
     });
   }
   const form = gateEl.querySelector('form');
+  gateEl.querySelector('[data-again]')?.addEventListener('click', () => { SS(`shift-again:${dayKey()}`, '1'); checkShiftGate(); });
   form.addEventListener('submit', (e) => {
+    if (st.mode === 'closed') { e.preventDefault(); return; }
     e.preventDefault();
     const err = gateEl.querySelector('#sg-err');
     try {
