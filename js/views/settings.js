@@ -62,10 +62,10 @@ export default {
           <div class="card-head"><h2>People with access</h2></div>
           <p class="muted small">Only these Google accounts can open ${esc(store.shop?.name || 'this shop')}. Managers can do everything except manage people. Sellers can only sell and view stock.${store.isAdmin ? '' : ' Only management can change owners.'}</p>
           <ul class="rows">
-            ${owners.map((email) => `<li class="row"><div class="grow"><b>${esc(email)}</b><small>Owner</small></div>${store.isAdmin && owners.length > 1 ? `<button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button>` : ''}</li>`).join('')}
-            ${members.map(([email, role]) => `<li class="row member-row"><div class="grow"><b>${esc(email)}</b><small>${esc(roleName(role))}</small>
+            ${owners.map((email) => `<li class="row"><div class="grow"><b>${esc(email)}</b><small>Owner${store.settings.memberPins?.[String(email).toLowerCase()] ? ' · PIN set' : ' · no PIN yet'}</small></div><button type="button" class="btn ghost small" data-setpin="${esc(email)}">${store.settings.memberPins?.[String(email).toLowerCase()] ? 'Change PIN' : 'Set PIN'}</button>${store.isAdmin && owners.length > 1 ? `<button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button>` : ''}</li>`).join('')}
+            ${members.map(([email, role]) => `<li class="row member-row"><div class="grow"><b>${esc(email)}</b><small>${esc(roleName(role))}${store.settings.memberPins?.[String(email).toLowerCase()] ? ' · PIN set' : ' · no PIN yet'}</small>
               ${role === 'manager' ? `<label class="check perm-switch"><input type="checkbox" data-can-clear="${esc(email)}" ${store.shop?.canClear?.[email] ? 'checked' : ''}> Can delete received orders and clear figures (losses, expenses)</label>` : ''}</div>
-              <button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button></li>`).join('')}
+              <button type="button" class="btn ghost small" data-setpin="${esc(email)}">${store.settings.memberPins?.[String(email).toLowerCase()] ? 'Change PIN' : 'Set PIN'}</button><button class="icon-btn" data-remove="${esc(email)}" aria-label="Remove ${esc(email)}">${icon('trash')}</button></li>`).join('')}
           </ul>
           <form class="inline-form" id="add-member">
             <input name="email" type="email" required placeholder="their.email@gmail.com" aria-label="Email">
@@ -184,6 +184,25 @@ export default {
       if (a === 'changes') openChanges();
       const th = e.target.closest('[data-theme-pick]')?.dataset.themePick;
       if (th) { setTheme(th); draw(); }
+      const sp = e.target.closest('[data-setpin]')?.dataset.setpin;
+      if (sp) {
+        const has = !!store.settings.memberPins?.[sp.toLowerCase()];
+        modal({
+          title: `${has ? 'Change' : 'Set'} PIN · ${sp}`,
+          body: `<p class="small">This person types the PIN each time they open or close a shift. Tell them the PIN in person.</p>
+            ${field('New 4-digit PIN', '<input name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" required autofocus>')}
+            ${field('Type the PIN again', '<input name="pin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" required>')}`,
+          actions: `${has ? '<button type="button" class="btn ghost danger" data-clearpin>Remove PIN</button>' : ''}<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Save PIN</button>`,
+          onMount: (dlg, close) => dlg.querySelector('[data-clearpin]')?.addEventListener('click', () => { store.setMemberPin(sp, null).then(() => { toast('PIN removed'); close(); draw(); }); }),
+          onSubmit: (v, { close }) => {
+            if (!/^\d{4}$/.test(v.pin || '')) throw new Error('The PIN must be 4 digits');
+            if (v.pin !== v.pin2) throw new Error('The two PINs are not the same');
+            store.setMemberPin(sp, v.pin).then(() => { toast(`PIN saved for ${sp}`); close(); draw(); }).catch((x) => toast(x.message, { kind: 'err' }));
+            return false;
+          },
+        });
+        return;
+      }
       const rm = e.target.closest('[data-remove]')?.dataset.remove;
       if (rm && await confirmBox(`Remove access for ${rm}?`, { ok: 'Remove', danger: true })) { try { store.setShopMember(rm, null); toast('Access removed'); } catch (err) { toast(err.message, { kind: 'err' }); } }
     });

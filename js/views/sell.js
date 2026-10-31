@@ -442,7 +442,7 @@ export function openShiftPanel() {
       title: 'Open shift',
       body: field('Cash in the drawer now (TSh)', '<input name="cash" type="number" inputmode="numeric" min="0" step="1" required autofocus value="0">', 'Count the money in the drawer before you start selling.'),
       actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Open shift</button>',
-      onSubmit: ({ cash }) => { store.openShift(cash); toast('Shift opened'); },
+      onSubmit: ({ cash }) => { import('./pin.js').then((m) => m.askPin({ title: 'Your PIN to open the shift' })).then((ok) => { if (!ok) return; store.openShift(cash); toast('Shift opened'); }); },
     });
     return;
   }

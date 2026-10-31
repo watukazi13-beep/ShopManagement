@@ -806,6 +806,48 @@ export const store = {
     const other = f.rows.filter((r) => r.method !== f.cashName).reduce((t, r) => t + r.sales, 0) + f.creditSales;
     return { count: f.count, cashSales: c.sales, cashRefunds: c.refunds, otherSales: money(other), cashPayments: c.payments, cashIn: c.cashIn, cashOut: c.cashOut, cashPayouts: c.payouts, expected: c.expected };
   },
+  // ---------- PIN for opening / closing a shift ----------
+  _pinSalt(email) { return `${this.shop?.id || 'local'}:${String(email || '').toLowerCase()}`; },
+  _pinEmail() { return String(this.user?.email || 'this-device').toLowerCase(); },
+  /** Does the person using the app have a PIN? (shared-till staff always do) */
+  hasPin() {
+    if (this.activeStaff) return !!this.activeStaff.pin;
+    return !!this.settings.memberPins?.[this._pinEmail()];
+  },
+  async verifyPin(pin) {
+    if (this.activeStaff) return (await hashPin(pin, this.shop?.id || 'local')) === this.activeStaff.pin;
+    const email = this._pinEmail();
+    const want = this.settings.memberPins?.[email];
+    return !!want && (await hashPin(pin, this._pinSalt(email))) === want;
+  },
+  /** Owner / manager sets (or clears, pin = null) someone's PIN. */
+  async setMemberPin(email, pin) {
+    if (!this.can('settings')) throw new Error('Only the owner can set PINs');
+    const key = String(email || this._pinEmail()).toLowerCase();
+    const pins = { ...(this.settings.memberPins || {}) };
+    if (pin === null) pins[key] = null; // null, not delete: a merge keeps keys that are left out
+    else {
+      if (!/^\d{4}$/.test(String(pin))) throw new Error('The PIN must be 4 digits');
+      pins[key] = await hashPin(String(pin), this._pinSalt(key));
+    }
+    this.saveSettings({ memberPins: pins });
+    return true;
+  },
+  /**
+   * Undo an accidental close: the shift is open again (from `startTs`), its day closing is removed,
+   * and any other shift the same person opened later that day is removed (its sales stay — sales belong to the day).
+   */
+  reopenShift(shift, startTs = shift.ts) {
+    if (!this.can('orders')) throw new Error('Only the owner or a manager can reopen a shift');
+    const day = shift.date || dayKey(shift.ts);
+    const ops = [{ type: 'merge', col: 'shifts', id: shift.id, data: { closedAt: null, countedCash: null, expectedCash: null, difference: null, totalDiff: null, takenOut: null, leftInDrawer: null, closeNote: null, dayCloseId: null, figures: null, ts: startTs, date: dayKey(startTs), reopenedAt: Date.now(), reopenedBy: this.user?.email || '' } }];
+    const dc = this.data.dayclose.find((d) => d.shiftId === shift.id || d.id === shift.dayCloseId);
+    if (dc) ops.push({ type: 'delete', col: 'dayclose', id: dc.id });
+    for (const s of this.data.shifts) {
+      if (s.id !== shift.id && !s.closedAt && s.by === shift.by && (s.staffId || '') === (shift.staffId || '') && (s.date || dayKey(s.ts)) === day) ops.push({ type: 'delete', col: 'shifts', id: s.id });
+    }
+    return this._commit(`Reopened ${shift.byName || 'the'} shift of ${day} (from ${new Date(startTs).toTimeString().slice(0, 5)})`, ops, { known: dc ? { [`dayclose/${dc.id}`]: dc } : {} });
+  },
   /** The seller's last closed shift (for "last time you counted…"). */
   myLastClosedShift() {
     return this.data.shifts.filter((s) => s.closedAt && s.by === this.user?.email && (s.staffId || '') === (this.activeStaff?.id || '')).sort((a, b) => b.closedAt - a.closedAt)[0] || null;

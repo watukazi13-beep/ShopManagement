@@ -3,6 +3,7 @@
 import { store } from '../store.js';
 import { dayKey, num } from '../calc.js';
 import { esc, fmt, fmtDate, fmtTime, icon, modal, toast, field, printHtml, toInputDate, fromInputDate } from '../ui.js';
+import { askPin } from './pin.js';
 
 const moneyMethods = () => (store.settings.payMethods || ['Cash']).filter((m) => !store.isCreditPay(m));
 const diffText = (d) => (d == null ? '—' : d === 0 ? 'Matches' : `${d > 0 ? 'Over' : 'Short'} ${fmt(Math.abs(d))}`);
@@ -174,8 +175,11 @@ export function todayCard() {
  * Close shift = close the day. One count for the whole drawer: every way of paying, pay-outs,
  * cash put in or taken out during the shift, cash taken to the bank/owner, and what is left for tomorrow.
  */
-export function openCloseShift(sh = store.myOpenShift(), { onDone, summary = true } = {}) {
+export function openCloseShift(sh = store.myOpenShift(), opts = {}) {
   if (!sh) return;
+  askPin({ title: 'Your PIN to close the shift', reason: 'Closing the shift also closes the day.' }).then((ok) => { if (ok) closeShiftForm(sh, opts); });
+}
+function closeShiftForm(sh, { onDone, summary = true } = {}) {
   let f = store.shiftDayFigures(sh);
   const day = f.day;
   const parts = (r) => [r.opening ? `start ${fmt(r.opening)}` : '', r.sales ? `sales ${fmt(r.sales)}` : '', r.payments ? `paid debts ${fmt(r.payments)}` : '', r.cashIn ? `put in ${fmt(r.cashIn)}` : '',

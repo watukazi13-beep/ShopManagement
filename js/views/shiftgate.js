@@ -6,10 +6,11 @@
 //  - Home (owner / manager): who opened today, when, and how each shift closed.
 import { store } from '../store.js';
 import { dayKey, num } from '../calc.js';
-import { esc, fmt, fmtDate, fmtTime, icon, toast } from '../ui.js';
+import { esc, fmt, fmtDate, fmtTime, icon, toast, modal } from '../ui.js';
 import { isSharedTill } from './staff.js';
 import { openCloseShift } from './sell.js';
 import { langSwitch } from '../i18n.js';
+import { askPin } from './pin.js';
 
 const REMIND_EVERY = 15 * 60 * 1000;
 const LS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
@@ -127,9 +128,16 @@ export function checkShiftGate(h = hooks) {
       if (st.mode === 'open') {
         const v = form.cash.value;
         if (v === '' || num(v) < 0) throw new Error('Type the cash in the drawer (0 if empty)');
-        store.openShift(num(v));
         askNotify();
-        toast(`Shift opened — have a good day${firstName() ? `, ${firstName()}` : ''}`);
+        askPin({ title: 'Your PIN to open the shift' }).then((ok) => {
+          if (!ok) return;
+          try {
+            store.openShift(num(v));
+            toast(`Shift opened — have a good day${firstName() ? `, ${firstName()}` : ''}`);
+            setTimeout(() => checkShiftGate(), 50);
+          } catch (ex) { err.textContent = ex.message; }
+        });
+        return;
       }
       setTimeout(() => checkShiftGate(), 50);
     } catch (ex) { err.textContent = ex.message; }
@@ -187,11 +195,32 @@ export function shiftsTodayCard() {
     const status = s.closedAt
       ? `<span class="pill ${num(s.difference) < 0 ? 'bad' : num(s.difference) > 0 ? 'warn' : 'good'}">Closed ${fmtTime(s.closedAt)} · ${num(s.difference) === 0 ? 'matches' : num(s.difference) < 0 ? `short ${fmt(-num(s.difference))}` : `over ${fmt(num(s.difference))}`}</span>`
       : `<span class="pill ${late || (s.date || dayKey(s.ts)) !== today ? 'bad' : 'good'}">${late || (s.date || dayKey(s.ts)) !== today ? 'Still open' : 'Open now'}</span>`;
-    return `<li class="row"><div class="grow"><b>${who}</b><small>Opened ${opened} · cash ${fmt(s.openingCash)}</small></div>${status}</li>`;
+    const reopen = s.closedAt && store.can('orders') && (s.date || dayKey(s.ts)) === today ? `<button type="button" class="btn ghost small" data-reopen="${s.id}">Reopen</button>` : '';
+    return `<li class="row"><div class="grow"><b>${who}</b><small>Opened ${opened} · cash ${fmt(s.openingCash)}</small></div>${status}${reopen}</li>`;
   };
   return `
     <section class="card shifts-card">
       <div class="card-head"><h2>Shifts today</h2><span class="muted small">Close by ${closeTime()}</span></div>
       ${list.length ? `<ul class="rows">${list.map(row).join('')}</ul>` : '<p class="muted small">No shift opened yet today.</p>'}
     </section>`;
+}
+
+/** Owner / manager: undo an accidental close — the shift is open again from the time chosen. */
+export function openReopenShift(id) {
+  const sh = store.data.shifts.find((s) => s.id === id);
+  if (!sh) return;
+  const hhmm = new Date(sh.ts).toTimeString().slice(0, 5);
+  modal({
+    title: `Reopen ${sh.byName || ''} shift`,
+    body: `<p>The shift was closed at <b>${fmtTime(sh.closedAt)}</b>. Reopening removes that closing (and today's day closing), so the shift can be counted and closed again tonight.</p>
+      <label class="field"><span class="field-label">Shift started at</span><input name="start" type="time" value="${hhmm}" required></label>
+      <p class="muted small">Sales are not affected — they belong to the day. Any other shift ${esc(sh.byName || '')} opened later today is removed. You can undo this in Change history.</p>`,
+    actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Reopen shift</button>',
+    onSubmit: (v) => {
+      const [h, m] = String(v.start || hhmm).split(':').map(Number);
+      const d = new Date(sh.ts); d.setHours(h, m, 0, 0);
+      store.reopenShift(sh, d.getTime());
+      toast(`Shift reopened from ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    },
+  });
 }

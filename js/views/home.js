@@ -2,7 +2,7 @@ import { store } from '../store.js';
 import { daySummary, profitAndLoss, monthKey, monthLabel, stockValue, num, dayKey } from '../calc.js';
 import { todayCard, openPayout, showDayClose } from './dayclose.js';
 import { backupReminder, downloadFullBackup } from './backup.js';
-import { shiftsTodayCard } from './shiftgate.js';
+import { shiftsTodayCard, openReopenShift } from './shiftgate.js';
 import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
 import { showReceipt } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
@@ -126,6 +126,8 @@ export default {
         </div>`;
     };
     el.addEventListener('click', (e) => {
+      const ro = e.target.closest('[data-reopen]')?.dataset.reopen;
+      if (ro) { openReopenShift(ro); return; }
       const a = e.target.closest('[data-act]')?.dataset.act;
       if (a === 'install') installApp();
       if (a === 'setup') openSetup();

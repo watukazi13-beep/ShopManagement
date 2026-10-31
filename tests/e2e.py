@@ -55,6 +55,19 @@ with sync_playwright() as p:
     def open_sections():
         pg.evaluate("document.querySelectorAll('#shop-form details').forEach((d) => d.open = true)")
 
+    def pin(code, wrong=None):
+        # The PIN step before opening or closing a shift (first time: create the PIN).
+        pg.wait_for_timeout(250)
+        d = pg.locator('dialog[open]').last
+        if 'PIN' not in d.locator('.sheet-head').inner_text(): return False
+        if wrong:
+            d.locator('[name=pin]').fill(wrong); d.get_by_role('button', name='Continue').click(); pg.wait_for_timeout(300)
+        d.locator('[name=pin]').fill(code)
+        if d.locator('[name=pin2]').count(): d.locator('[name=pin2]').fill(code); d.get_by_role('button', name='Save PIN').click()
+        else: d.get_by_role('button', name='Continue').click()
+        pg.wait_for_timeout(400)
+        return True
+
     def stock_tool(name):
         # Wide screens show the button; phones keep it under "More".
         b = pg.locator(f'.head-actions [data-act={name}]')
@@ -582,6 +595,9 @@ with sync_playwright() as p:
     check('No shift open' in pg.locator('#pos-tools').inner_text(), 'Sell asks to open a shift')
     pg.locator('#pos-tools [data-shift]').click(); pg.wait_for_timeout(200)
     dlg().locator('[name=cash]').fill('20000'); submit('Open shift'); pg.wait_for_timeout(300)
+    check(pg.locator('dialog[open] .sheet-head', has_text='Create your PIN').count() == 1, 'opening a shift asks for a PIN (the owner creates one the first time)')
+    pin('2468')
+    check(bool(data(pg)['meta']['settings'].get('memberPins')), 'the PIN is saved only as a hash')
     check(pg.locator('#pos-tools').inner_text().startswith('Shift'), 'shift opened')
     pg.locator('.tile:has(.tile-name:text-is("Rice"))').click()
     if W < 900: pg.click('#cart-bar'); pg.wait_for_timeout(150)
@@ -595,6 +611,8 @@ with sync_playwright() as p:
     day_cash = pg.evaluate("import('/js/store.js').then(({ store }) => { const f = store.dayFigures(undefined, 0); return f.rows.find((r) => r.method === f.cashName).expected; })")
     check(expected == 20000 + day_cash - 1000 and f'{expected:,}' in dlg().inner_text(), f'one drawer: the shift expects opening 20,000 + all cash taken in today {day_cash:,} − 1,000 taken out = {expected:,}')
     dlg().locator('[data-close-shift]').click(); pg.wait_for_timeout(300)
+    check('PIN' in dlg().inner_text(), 'closing a shift asks for the PIN')
+    pin('2468', wrong='1111')
     check('Should be' in dlg().inner_text() and 'M-Pesa' in dlg().inner_text() and pg.locator('[data-dayclose]').count() == 0, 'Close shift lists every money line (there is no separate Close day)')
     submit('Close shift'); pg.wait_for_timeout(300)
     check(dlg().count() == 1 and not data(pg).get('dayclose'), 'the shift cannot close without counting the cash')
@@ -833,7 +851,7 @@ with sync_playwright() as p:
     check(len(po_x) == 1 and po_x[0]['amount'] == 3000 and po_x[0]['paidFrom'] == 'Cash' and po_x[0]['category'] == 'Food', 'pay-out saved as a Food expense paid from Cash')
     cash_exp = pg.evaluate("import('/js/store.js').then(({ store }) => store.shiftFigures(store.myOpenShift()).expected)")
     check(cash_exp == 10000 - 3000, f'second shift of the day: opening 10,000 − 3,000 pay-out = {cash_exp:,} (earlier sales belong to the first shift)')
-    pg.evaluate("import('/js/views/sell.js').then((m) => m.openCloseShift())"); pg.wait_for_timeout(400)
+    pg.evaluate("import('/js/views/sell.js').then((m) => m.openCloseShift())"); pg.wait_for_timeout(400); pin('2468')
     dlg().locator('tr[data-m="Cash"] .dc-count').fill(str(cash_exp - 2000)); dlg().locator('tr[data-m="Cash"] .dc-count').dispatch_event('input')
     check('Short' in dlg().locator('tr[data-m="Cash"] .dc-diff').inner_text(), 'counting 2,000 less shows Short')
     dlg().locator('[name=takenOut]').fill('1000'); dlg().locator('[name=takenOut]').dispatch_event('input')
@@ -897,19 +915,21 @@ with sync_playwright() as p:
     pg.screenshot(path=OUT + 'shift-gate.png')
     gate.locator('button', has_text='Open shift').click(); pg.wait_for_timeout(200)
     check(gate.is_visible() and 'Type the cash' in gate.inner_text(), 'opening without the cash count is refused')
-    gate.locator('[name=cash]').fill('20000'); gate.locator('button', has_text='Open shift').click(); pg.wait_for_timeout(500)
+    gate.locator('[name=cash]').fill('20000'); gate.locator('button', has_text='Open shift').click(); pg.wait_for_timeout(300)
+    check(pg.locator('#shift-gate').count() == 1 and dlg().count() == 1 and 'PIN' in dlg().inner_text(), 'Juma must type his PIN to open the shift')
+    pin('1234'); pg.wait_for_timeout(200)
     sh = pg.evaluate("import('/js/store.js').then(({ store }) => { const s = store.myOpenShift(); return s && { open: s.openingCash, staff: s.staffId, by: s.byName }; })")
     check(pg.locator('#shift-gate').count() == 0 and sh and sh['open'] == 20000 and sh['by'] == 'Juma', f'shift opened with 20,000 for Juma; the app is unlocked ({sh})')
     # Yesterday's shift left open: close it first
     pg.evaluate("import('/js/store.js').then(({ store }) => { const s = store.myOpenShift(); const t = s.ts - 86400000; const d = new Date(t); const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); store.backend.write([{ type: 'merge', col: 'shifts', id: s.id, data: { ts: t, date: k } }]); })"); pg.wait_for_timeout(600)
     check(pg.locator('#shift-gate').is_visible() and 'Close the earlier shift first' in pg.locator('#shift-gate').inner_text(), "a shift left open from yesterday must be closed first")
     pg.screenshot(path=OUT + 'shift-gate-stale.png')
-    pg.locator('#shift-gate [data-close-stale]').click(); pg.wait_for_timeout(300)
+    pg.locator('#shift-gate [data-close-stale]').click(); pg.wait_for_timeout(300); pin('1234')
     dlg().locator('tr[data-m="Cash"] .dc-count').fill('20000'); submit('Close shift'); pg.wait_for_timeout(700)
     stale_dc = [x for x in data(pg)['dayclose'].values() if x.get('day') != pg.evaluate("(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })()")]
     check(len(stale_dc) == 1, "closing yesterday's shift closes yesterday as a day")
     check(pg.locator('#shift-gate').is_visible() and 'Open shift' in pg.locator('#shift-gate').inner_text(), 'after closing it, the Open shift screen comes back')
-    pg.locator('#shift-gate [name=cash]').fill('15000'); pg.locator('#shift-gate button', has_text='Open shift').click(); pg.wait_for_timeout(500)
+    pg.locator('#shift-gate [name=cash]').fill('15000'); pg.locator('#shift-gate button', has_text='Open shift').click(); pin('1234'); pg.wait_for_timeout(300)
     check(pg.locator('#shift-gate').count() == 0, "today's shift opened")
     # Evening reminder
     pg.evaluate("import('/js/store.js').then(({ store }) => { store.saveSettings({ closeShiftAt: '23:59' }); })"); pg.wait_for_timeout(400)
@@ -917,15 +937,15 @@ with sync_playwright() as p:
     pg.evaluate("import('/js/store.js').then(({ store }) => { store.saveSettings({ closeShiftAt: '00:00' }); })"); pg.wait_for_timeout(400)
     check(pg.locator('#shift-bar').is_visible() and 'close your shift' in pg.locator('#shift-bar').inner_text(), 'after the close time a red bar says close your shift')
     pg.screenshot(path=OUT + 'shift-bar.png')
-    pg.locator('#shift-bar button').click(); pg.wait_for_timeout(300)
-    check('Should be' in dlg().inner_text(), 'the bar opens the count-the-cash screen')
+    pg.locator('#shift-bar button').click(); pg.wait_for_timeout(300); pin('1234')
+    check('Should be' in dlg().inner_text(), 'the bar opens the count-the-cash screen (after the PIN)')
     # Pay-out from the drawer is taken off what the shift expects
     exp0 = pg.evaluate("import('/js/store.js').then(({ store }) => store.shiftFigures(store.myOpenShift()).expected)")
     pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
     pg.evaluate("import('/js/store.js').then(({ store }) => store.payout({ amount: 2000, category: 'Food', paidFrom: 'Cash' }))"); pg.wait_for_timeout(400)
     exp1 = pg.evaluate("import('/js/store.js').then(({ store }) => store.shiftFigures(store.myOpenShift()).expected)")
     check(exp1 == exp0 - 2000, f'a 2,000 food pay-out from the drawer lowers the expected cash ({exp0:,} -> {exp1:,})')
-    pg.locator('#shift-bar button').click(); pg.wait_for_timeout(300)
+    pg.locator('#shift-bar button').click(); pg.wait_for_timeout(300); pin('1234')
     check('pay-outs' in dlg().inner_text(), 'the close screen explains the expected cash, including pay-outs')
     dlg().locator('tr[data-m="Cash"] .dc-count').fill(str(exp1)); submit('Close shift'); pg.wait_for_timeout(700)
     gate = pg.locator('#shift-gate')
@@ -936,7 +956,7 @@ with sync_playwright() as p:
     gate.locator('[data-again]').click(); pg.wait_for_timeout(300)
     check('Open shift' in gate.inner_text() and 'Left in the drawer' in gate.inner_text() and f'{exp1:,}' in gate.inner_text(), f'"Open another shift" shows what was left in the drawer ({exp1:,})')
     pg.screenshot(path=OUT + 'shift-open-last.png')
-    gate.locator('[name=cash]').fill(str(exp1)); gate.locator('button', has_text='Open shift').click(); pg.wait_for_timeout(500)
+    gate.locator('[name=cash]').fill(str(exp1)); gate.locator('button', has_text='Open shift').click(); pin('1234'); pg.wait_for_timeout(300)
     check(pg.locator('#shift-gate').count() == 0, 'second shift opened')
     pg.evaluate("import('/js/store.js').then(({ store }) => { store.saveSettings({ closeShiftAt: '23:59' }); })"); pg.wait_for_timeout(400)
     navs = pg.locator('[data-nav]').evaluate_all('els => els.map(e => e.dataset.nav)')

@@ -34,6 +34,7 @@ const APP_FILES = [
   './js/views/backup.js',
   './js/views/pricing.js',
   './js/views/shiftgate.js',
+  './js/views/pin.js',
   './js/i18n.js',
   './js/sw-dict.js',
   './js/views/money.js',

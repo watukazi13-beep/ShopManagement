@@ -113,6 +113,9 @@ with sync_playwright() as p:
     go('#/settings')
     pg.fill('#add-member [name=email]', 'Seller@Gmail.com'); pg.select_option('#add-member [name=role]', 'staff')
     pg.click('#add-member button'); pg.wait_for_timeout(500)
+    pg.locator('[data-setpin="seller@gmail.com"]').click(); pg.wait_for_timeout(250)
+    dlg().locator('[name=pin]').fill('4321'); dlg().locator('[name=pin2]').fill('4321'); dlg().get_by_role('button', name='Save PIN').click(); pg.wait_for_timeout(500)
+    check(bool((fs()[f'shops/{main}/meta/settings'].get('memberPins') or {}).get('seller@gmail.com')), 'owner set the seller’s PIN (stored as a hash)')
     shop1 = fs()[f'shops/{main}']
     check(shop1['members'] == {'seller@gmail.com': 'staff'} and 'seller@gmail.com' in shop1['memberEmails'], 'seller added to the shop (email in lower case)')
 
@@ -170,7 +173,7 @@ with sync_playwright() as p:
     check(pg.locator('#shop-name').inner_text() == 'Greenlight Main', 'seller goes straight into their shop')
     pg.wait_for_timeout(500)
     check(pg.locator('#shift-gate').is_visible() and 'Open shift' in pg.locator('#shift-gate').inner_text(), 'seller must open a shift first')
-    pg.locator('#shift-gate [name=cash]').fill('10000'); pg.locator('#shift-gate button', has_text='Open shift').click(); pg.wait_for_timeout(900)
+    pg.locator('#shift-gate [name=cash]').fill('10000'); pg.locator('#shift-gate button', has_text='Open shift').click(); pg.wait_for_timeout(300); dlg().locator('[name=pin]').fill('4321'); dlg().get_by_role('button', name='Continue').click(); pg.wait_for_timeout(700)
     shifts = [v for k, v in fs().items() if '/shifts/' in k]
     check(pg.locator('#shift-gate').count() == 0 and len(shifts) == 1 and shifts[0]['openingCash'] == 10000 and shifts[0]['by'] == 'seller@gmail.com', 'seller opened the shift (saved online, allowed by the rules)')
     navs = pg.locator('[data-nav]').evaluate_all('els => els.map(e => e.dataset.nav)')
@@ -203,7 +206,7 @@ with sync_playwright() as p:
     dlg().get_by_role('button', name='Save pay-out').click(); pg.wait_for_timeout(500)
     check(any(x.get('payout') and x['by'] == 'seller@gmail.com' and x['amount'] == 2000 for x in docs(main, 'expenses')), 'seller paid out 2,000 for transport')
     go('#/sell'); pg.locator('#pos-tools [data-shift]').click(); pg.wait_for_timeout(300)
-    dlg().locator('[data-close-shift]').click(); pg.wait_for_timeout(400)
+    dlg().locator('[data-close-shift]').click(); pg.wait_for_timeout(300); dlg().locator('[name=pin]').fill('4321'); dlg().get_by_role('button', name='Continue').click(); pg.wait_for_timeout(700)
     dlg().locator('tr[data-m="Cash"] .dc-count').fill('16000'); dlg().locator('tr[data-m="Cash"] .dc-count').dispatch_event('input')
     dlg().get_by_role('button', name='Close shift').click(); pg.wait_for_timeout(700)
     dc = docs(main, 'dayclose')
@@ -236,7 +239,7 @@ with sync_playwright() as p:
     sign_out(); sign_in(SELLER); pg.wait_for_timeout(500)
     check('Shift closed for today' in pg.locator('#shift-gate').inner_text(), 'seller signing in again after closing sees "Shift closed for today"')
     pg.locator('#shift-gate [data-again]').click(); pg.wait_for_timeout(300)
-    pg.locator('#shift-gate [name=cash]').fill('16000'); pg.locator('#shift-gate button', has_text='Open shift').click(); pg.wait_for_timeout(700)
+    pg.locator('#shift-gate [name=cash]').fill('16000'); pg.locator('#shift-gate button', has_text='Open shift').click(); pg.wait_for_timeout(300); dlg().locator('[name=pin]').fill('4321'); dlg().get_by_role('button', name='Continue').click(); pg.wait_for_timeout(700)
     go('#/stock'); pg.click('[data-f=incoming]'); pg.wait_for_timeout(300)
     pg.locator('[data-recv]').first.click(); pg.wait_for_timeout(300)
     dlg().get_by_role('button', name='Receive into stock').click(); pg.wait_for_timeout(600)
