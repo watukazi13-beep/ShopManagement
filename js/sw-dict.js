@@ -305,4 +305,14 @@ export const SW_PAIRS = [
   ['The full backup is one file with all your items, sales, purchases, customers and settings — every month. Keep it on Google Drive or email it to yourself once a week.', 'Nakala kamili ni faili moja lenye bidhaa, mauzo, manunuzi, wateja na mipangilio yako yote — kila mwezi. Ihifadhi Google Drive au jitumie kwa barua pepe mara moja kwa wiki.'],
   ['Box of {}', 'Boksi ya {}'], ['Dozen of {}', 'Dazeni ya {}'], ['Bag of {}', 'Mfuko wa {}'], ['Carton of {}', 'Katoni ya {}'], ['Pack of {}', 'Pakiti ya {}'], ['Packet of {}', 'Pakiti ya {}'], ['Set of {}', 'Seti ya {}'], ['Bundle of {}', 'Bunda la {}'], ['Crate of {}', 'Kreti ya {}'], ['Roll of {}', 'Roli ya {}'], ['Ream of {}', 'Rimu ya {}'],
   ['computer', 'kompyuta'], ['phone', 'simu'], ['October 2026', 'Oktoba 2026'],
+  // ---------- Close shift = close the day ----------
+  ['Close shift · {}', 'Funga zamu · {}'], ['Shift opened {} by', 'Zamu ilifunguliwa {} na'], ['. Closing the shift also closes the day.', '. Kufunga zamu kunafunga siku pia.'],
+  ['Count all the cash in the drawer', 'Hesabu pesa yote iliyo kwenye droo'], ['(including the opening cash) and check each mobile-money balance received today. Cash must be counted; leave a mobile-money line empty if you have not checked it.', '(ikiwemo pesa ya kuanzia) na kagua salio la kila pesa ya simu iliyopokelewa leo. Taslimu lazima ihesabiwe; acha mstari wa pesa ya simu wazi kama hujaukagua.'],
+  ['Count', 'Hesabu'], ['Not checked', 'Haijakaguliwa'], ['Not counted', 'Haijahesabiwa'], ['Shift closed — everything matches', 'Zamu imefungwa — kila kitu kiko sawa'], ['Count the cash in the drawer first', 'Hesabu pesa iliyo kwenye droo kwanza'],
+  ['Shift and day closed · {}', 'Zamu na siku zimefungwa · {}'], ['No days closed this month', 'Hakuna siku iliyofungwa mwezi huu'], ['Each evening the seller closes the shift — that count closes the day and shows here.', 'Kila jioni muuzaji anafunga zamu — hesabu hiyo inafunga siku na inaonekana hapa.'],
+  ['Left in the drawer at the last closing, {}', 'Iliyobaki kwenye droo kwenye ufungaji wa mwisho, {}'], ['left in the drawer for tomorrow', 'zimebaki kwenye droo kwa kesho'], ['. The day is closed. Thank you{} — see you tomorrow.', '. Siku imefungwa. Asante{} — tuonane kesho.'],
+  ["was not closed. Count the cash and mobile money and close it — that also closes that day. Then open today's shift.", 'haikufungwa. Hesabu taslimu na pesa ya simu uifunge — hiyo inafunga siku hiyo pia. Kisha fungua zamu ya leo.'],
+  ['Cash expected in the drawer', 'Pesa inayotarajiwa kwenye droo'], ['Count and close that shift', 'Hesabu na funga zamu hiyo'], ['Pay-outs ({})', 'Malipo ({})'],
+  ['start {}', 'mwanzo {}'], ['sales {}', 'mauzo {}'], ['paid debts {}', 'madeni yaliyolipwa {}'], ['put in {}', 'iliyowekwa {}'], ['refunds −{}', 'marejesho −{}'], ['pay-outs −{}', 'malipo −{}'], ['taken out −{}', 'iliyotolewa −{}'],
+  ['today {}', 'leo {}'],
 ];

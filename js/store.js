@@ -799,7 +799,13 @@ export const store = {
 
   // ---------- Shifts (cash drawer) ----------
   myOpenShift() { return this.data.shifts.find((s) => !s.closedAt && s.by === this.user?.email && (s.staffId || '') === (this.activeStaff?.id || '')); },
-  shiftFigures(shift) { return shiftExpected(shift, this.data.sales, this.data.payments, { cashName: (this.settings.payMethods || ['Cash'])[0] || 'Cash', expenses: this.data.expenses }); },
+  /** What should be in the drawer for this shift: the cash line of its day (one drawer for the shop). */
+  shiftFigures(shift) {
+    const f = this.shiftDayFigures(shift);
+    const c = f.rows.find((r) => r.method === f.cashName) || { sales: 0, payments: 0, refunds: 0, payouts: 0, cashIn: 0, cashOut: 0, expected: num(shift.openingCash) };
+    const other = f.rows.filter((r) => r.method !== f.cashName).reduce((t, r) => t + r.sales, 0) + f.creditSales;
+    return { count: f.count, cashSales: c.sales, cashRefunds: c.refunds, otherSales: money(other), cashPayments: c.payments, cashIn: c.cashIn, cashOut: c.cashOut, cashPayouts: c.payouts, expected: c.expected };
+  },
   /** The seller's last closed shift (for "last time you counted…"). */
   myLastClosedShift() {
     return this.data.shifts.filter((s) => s.closedAt && s.by === this.user?.email && (s.staffId || '') === (this.activeStaff?.id || '')).sort((a, b) => b.closedAt - a.closedAt)[0] || null;
@@ -852,8 +858,52 @@ export const store = {
   dayCloseFor(day) { return this.data.dayclose.find((d) => d.id === day) || null; },
   /** Cash left in the drawer at the last close before `day` — tomorrow's starting cash. */
   openingCashFor(day) {
-    const prev = this.data.dayclose.filter((d) => d.id < day).sort((a, b) => (a.id < b.id ? 1 : -1))[0];
+    const prev = this.data.dayclose.filter((d) => (d.day || d.id) < day).sort((a, b) => num(b.closedAt) - num(a.closedAt))[0];
     return prev ? num(prev.leftInDrawer) : num(this.settings.drawerFloat);
+  },
+  /** The most recent closing (what should be in the drawer now). */
+  lastClosing() { return [...this.data.dayclose].sort((a, b) => num(b.closedAt) - num(a.closedAt))[0] || null; },
+  /** Figures for a shift: everything taken in or paid out from its start (or the start of its day, for the day's first shift) until now. */
+  shiftDayFigures(shift) {
+    const day = shift.date || dayKey(shift.ts);
+    const earlier = this.data.shifts.some((s) => s.id !== shift.id && (s.date || dayKey(s.ts)) === day && s.ts < shift.ts);
+    const from = earlier ? shift.ts : new Date(`${day}T00:00:00`).getTime();
+    return dayClose({
+      day, from, to: day === dayKey() ? Date.now() + 1 : new Date(`${day}T00:00:00`).getTime() + DAY, sales: this.data.sales, payments: this.data.payments, expenses: this.data.expenses,
+      methods: this.settings.payMethods || ['Cash'], openingCash: shift.openingCash, moves: shift.moves || [],
+      creditName: (this.settings.payMethods || []).find((m) => this.isCreditPay(m)) || 'Credit',
+    });
+  },
+  /**
+   * Close the shift and, with it, the day: counted = { Cash: 52000, 'M-Pesa': 18000 }. Cash must be counted.
+   * Saves the shift and that day's closing together.
+   */
+  closeShiftDay(shift, { counted = {}, takenOut = 0, note = '' }) {
+    const f = this.shiftDayFigures(shift);
+    const rows = f.rows.map((r) => {
+      const c = counted[r.method];
+      const has = c !== undefined && c !== '' && c !== null;
+      return { ...r, counted: has ? money(c) : null, difference: has ? money(money(c) - r.expected) : null };
+    });
+    const cash = rows.find((r) => r.method === f.cashName);
+    if (!cash || cash.counted === null) throw new Error('Count the cash in the drawer first');
+    const totalDiff = money(rows.reduce((t, r) => t + (r.difference || 0), 0));
+    const left = money(cash.counted - money(takenOut));
+    if (left < 0) throw new Error('More cash taken out than is in the drawer');
+    const now = Date.now();
+    const sameDay = this.data.dayclose.filter((d) => (d.day || d.id) === f.day && d.shiftId !== shift.id).length;
+    const id = this.data.dayclose.find((d) => d.shiftId === shift.id)?.id || (sameDay ? `${f.day}-${sameDay + 1}` : f.day);
+    const rec = {
+      day: f.day, ts: new Date(`${f.day}T12:00:00`).getTime(), closedAt: now, openingCash: money(shift.openingCash), shiftId: shift.id,
+      rows, totalDiff, takenOut: money(takenOut), leftInDrawer: left, cashIn: f.rows.find((r) => r.method === f.cashName)?.cashIn || 0, cashOut: f.rows.find((r) => r.method === f.cashName)?.cashOut || 0,
+      count: f.count, total: f.total, creditSales: f.creditSales, payouts: f.payouts, payoutTotal: f.payoutTotal,
+      note, by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}),
+    };
+    this.backend.write([
+      { type: 'merge', col: 'shifts', id: shift.id, data: { closedAt: now, countedCash: cash.counted, expectedCash: cash.expected, difference: money(cash.counted - cash.expected), totalDiff, takenOut: money(takenOut), leftInDrawer: left, closeNote: note, dayCloseId: id } },
+      { type: 'set', col: 'dayclose', id, data: rec },
+    ]);
+    return { ...rec, id, difference: money(cash.counted - cash.expected) };
   },
   dayFigures(day = dayKey(), openingCash = this.openingCashFor(day)) {
     return dayClose({

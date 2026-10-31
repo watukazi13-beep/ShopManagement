@@ -249,13 +249,11 @@ export default {
       const over = list.reduce((t, x) => t + Math.max(0, num(x.totalDiff)), 0);
       const today = dayKey();
       body.innerHTML = `
-        <div class="row-btns spread"><p>${list.length} day${list.length === 1 ? '' : 's'} closed${short ? ` · <span class="neg">short ${fmt(-short)}</span>` : ''}${over ? ` · <span class="up">over ${fmt(over)}</span>` : ''}</p>
-          <button class="btn primary" data-act="close-today">${icon('check')}${(d.dayclose || []).some((x) => x.id === today) ? 'Close today again' : 'Close today'}</button></div>
+        <div class="row-btns spread"><p>${list.length} day${list.length === 1 ? '' : 's'} closed${short ? ` · <span class="neg">short ${fmt(-short)}</span>` : ''}${over ? ` · <span class="up">over ${fmt(over)}</span>` : ''}</p></div>
         ${list.length ? `<ul class="rows card">${list.map((x) => `
           <li class="row tap" data-day="${x.id}"><div class="grow"><b>${fmtDate(x.ts)}</b><small>${x.count} receipts · ${fmt(x.total)} sales · ${fmt(x.payoutTotal || 0)} paid out · by ${esc(x.byName || x.by)}</small></div>
-            <span class="pill ${x.totalDiff < 0 ? 'bad' : x.totalDiff > 0 ? 'warn' : 'good'}">${x.totalDiff === 0 ? 'Matches' : `${x.totalDiff > 0 ? 'Over' : 'Short'} ${fmt(Math.abs(x.totalDiff))}`}</span></li>`).join('')}</ul>`
-          : emptyState('No days closed this month', 'At the end of each day, count the cash and mobile money with “Close the day”.')}`;
-      body.querySelector('[data-act=close-today]').onclick = () => import('./dayclose.js').then((m) => m.openDayClose());
+            ${!(x.rows || []).some((r) => r.counted !== null && r.counted !== undefined) ? '<span class="pill warn">Not counted</span>' : `<span class="pill ${x.totalDiff < 0 ? 'bad' : x.totalDiff > 0 ? 'warn' : 'good'}">${x.totalDiff === 0 ? 'Matches' : `${x.totalDiff > 0 ? 'Over' : 'Short'} ${fmt(Math.abs(x.totalDiff))}`}</span>`}</li>`).join('')}</ul>`
+          : emptyState('No days closed this month', 'Each evening the seller closes the shift — that count closes the day and shows here.')}`;
       body.querySelectorAll('[data-day]').forEach((r) => { r.onclick = () => import('./dayclose.js').then((m) => m.showDayClose(list.find((x) => x.id === r.dataset.day))); });
     }
 

@@ -107,14 +107,13 @@ export function openDayClose(day = dayKey()) {
 /** A closed day: summary with print / WhatsApp. */
 export function showDayClose(rec) {
   modal({
-    title: `Day closed · ${fmtDate(rec.ts)}`,
+    title: `Shift and day closed · ${fmtDate(rec.ts)}`,
     wide: true,
     body: dayCloseHtml(rec, false),
-    actions: `<button type="button" class="btn ghost" data-wa>${icon('wa')}WhatsApp</button><button type="button" class="btn ghost" data-print>${icon('print')}Print / PDF</button>${store.can('sell') ? '<button type="button" class="btn ghost" data-redo>Close again</button>' : ''}<button class="btn primary">Done</button>`,
+    actions: `<button type="button" class="btn ghost" data-wa>${icon('wa')}WhatsApp</button><button type="button" class="btn ghost" data-print>${icon('print')}Print / PDF</button><button class="btn primary">Done</button>`,
     onMount: (dlg, close) => {
       dlg.querySelector('[data-print]').addEventListener('click', () => printHtml(`Day ${rec.day}`, dayCloseHtml(rec, true)));
       dlg.querySelector('[data-wa]').addEventListener('click', () => window.open(`https://wa.me/?text=${encodeURIComponent(dayCloseText(rec))}`, '_blank', 'noopener'));
-      dlg.querySelector('[data-redo]')?.addEventListener('click', () => { close(); setTimeout(() => openDayClose(rec.day), 150); });
     },
   });
 }
@@ -156,7 +155,7 @@ export function dayCloseText(rec) {
 /** The Home card: today's money and the Close the day button. */
 export function todayCard() {
   const day = dayKey();
-  const rec = store.dayCloseFor(day);
+  const rec = store.lastClosing() && (store.lastClosing().day || store.lastClosing().id) === day ? store.lastClosing() : null;
   const f = store.dayFigures(day);
   const top = f.rows.filter((r) => r.expected || r.sales).slice(0, 4);
   return `
@@ -167,7 +166,77 @@ export function todayCard() {
       <div class="row-btns">
         <button type="button" class="btn ghost" data-act="payout">${icon('cash')}Pay out</button>
         ${rec ? '<button type="button" class="btn ghost" data-act="dayclose-view">View closing</button>' : ''}
-        <button type="button" class="btn ${rec ? 'ghost' : 'primary'}" data-act="dayclose">${icon('check')}${rec ? 'Close again' : 'Close the day'}</button>
       </div>
     </section>`;
+}
+
+/**
+ * Close shift = close the day. One count for the whole drawer: every way of paying, pay-outs,
+ * cash put in or taken out during the shift, cash taken to the bank/owner, and what is left for tomorrow.
+ */
+export function openCloseShift(sh = store.myOpenShift(), { onDone, summary = true } = {}) {
+  if (!sh) return;
+  let f = store.shiftDayFigures(sh);
+  const day = f.day;
+  const parts = (r) => [r.opening ? `start ${fmt(r.opening)}` : '', r.sales ? `sales ${fmt(r.sales)}` : '', r.payments ? `paid debts ${fmt(r.payments)}` : '', r.cashIn ? `put in ${fmt(r.cashIn)}` : '',
+    r.refunds ? `refunds −${fmt(r.refunds)}` : '', r.payouts ? `pay-outs −${fmt(r.payouts)}` : '', r.cashOut ? `taken out −${fmt(r.cashOut)}` : ''].filter(Boolean).join(' · ') || 'nothing today';
+  modal({
+    title: `Close shift · ${fmtDate(new Date(`${day}T12:00:00`).getTime())}`,
+    wide: true,
+    body: `
+      <p class="small">Shift opened ${day !== dayKey() ? `${esc(fmtDate(sh.ts))} ` : ''}${fmtTime(sh.ts)} by <b>${esc(sh.byName || '')}</b>. Closing the shift also closes the day.</p>
+      <div class="stats compact">
+        <div><span>Sales</span><strong>${fmt(f.total)}</strong></div>
+        <div><span>Receipts</span><strong>${f.count}</strong></div>
+        <div><span>On credit</span><strong>${fmt(f.creditSales)}</strong></div>
+        <div><span>Paid out</span><strong>${fmt(f.payoutTotal)}</strong></div>
+      </div>
+      <p class="small"><b>Count all the cash in the drawer</b> (including the opening cash) and check each mobile-money balance received today. Cash must be counted; leave a mobile-money line empty if you have not checked it.</p>
+      <table class="table dc-table"><thead><tr><th>Money</th><th class="r">Should be</th><th class="r">Counted</th><th class="r">Difference</th></tr></thead>
+        <tbody id="dc-rows">${f.rows.map((r) => `<tr data-m="${esc(r.method)}">
+          <td><b>${esc(r.method)}</b><small>${parts(r)}</small></td>
+          <td class="r num">${fmt(r.expected)}</td>
+          <td class="r"><input class="dc-count" type="number" inputmode="numeric" step="1" min="0" ${r.method === f.cashName ? 'required' : ''} placeholder="${r.method === f.cashName ? 'Count' : '—'}" aria-label="${esc(r.method)} counted"></td>
+          <td class="r dc-diff"></td></tr>`).join('')}</tbody>
+        <tfoot><tr class="tot"><td>Total</td><td class="r num">${fmt(f.expected)}</td><td class="r num" id="dc-cnt"></td><td class="r" id="dc-tdiff"></td></tr></tfoot></table>
+      ${f.payouts.length ? `<details class="more"><summary>Pay-outs (${f.payouts.length})</summary><ul class="rows">${f.payouts.map((p) => `<li class="row"><div class="grow"><b>${esc(p.category)}</b><small>${esc(p.note || '')}${p.byName ? ' · ' + esc(p.byName) : ''} · from ${esc(p.paidFrom)}</small></div><span class="num">${fmt(p.amount)}</span></li>`).join('')}</ul></details>` : ''}
+      <div class="grid2">
+        ${field('Cash taken out (bank / owner)', '<input name="takenOut" type="number" inputmode="numeric" step="1" min="0" placeholder="0">')}
+        <div class="field"><span class="field-label">Left in the drawer for tomorrow</span><p class="big-total" id="dc-left">—</p></div>
+      </div>
+      ${field('Note (optional)', '<input name="note" placeholder="e.g. 2,000 short — change given twice">')}
+      <p class="pin-err" id="dc-err" role="alert"></p>`,
+    actions: `<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">${icon('check')}Close shift</button>`,
+    onMount: (dlg) => {
+      const form = dlg.querySelector('form');
+      const upd = () => {
+        f = store.shiftDayFigures(sh);
+        let cnt = 0, any = false, tdiff = 0, cashCounted = null;
+        dlg.querySelectorAll('#dc-rows tr').forEach((tr) => {
+          const r = f.rows.find((x) => x.method === tr.dataset.m);
+          if (!r) return;
+          const v = tr.querySelector('.dc-count').value;
+          const d = v === '' ? null : Math.round(num(v) - r.expected);
+          if (v !== '') { cnt += num(v); any = true; tdiff += d; }
+          if (r.method === f.cashName && v !== '') cashCounted = num(v);
+          const cell = tr.querySelector('.dc-diff');
+          cell.textContent = v === '' ? (r.method === f.cashName ? '' : 'Not checked') : diffText(d); cell.className = `r dc-diff ${diffCls(d)}`;
+        });
+        dlg.querySelector('#dc-cnt').textContent = any ? fmt(cnt) : '';
+        const td = dlg.querySelector('#dc-tdiff');
+        td.textContent = any ? diffText(tdiff) : ''; td.className = `r ${any ? diffCls(tdiff) : ''}`;
+        dlg.querySelector('#dc-left').textContent = cashCounted === null ? '—' : fmt(cashCounted - num(form.takenOut.value));
+      };
+      dlg.addEventListener('input', upd);
+      upd();
+      setTimeout(() => dlg.querySelector('.dc-count[required]')?.focus(), 80);
+    },
+    onSubmit: (v, { form }) => {
+      const counted = {};
+      form.querySelectorAll('#dc-rows tr').forEach((tr) => { counted[tr.dataset.m] = tr.querySelector('.dc-count').value; });
+      const rec = store.closeShiftDay(sh, { counted, takenOut: num(v.takenOut), note: v.note });
+      toast(rec.totalDiff === 0 ? 'Shift closed — everything matches' : `Shift closed — ${rec.totalDiff > 0 ? 'over' : 'short'} by ${fmt(Math.abs(rec.totalDiff))}`, { kind: rec.totalDiff < 0 ? 'warn' : 'ok', ms: 6000 });
+      setTimeout(() => { if (summary) showDayClose(rec); onDone?.(rec); }, 250);
+    },
+  });
 }

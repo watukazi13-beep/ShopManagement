@@ -114,8 +114,7 @@ export default {
         ${shifts && !sh ? `<div class="banner warn grow">No shift open. <button type="button" class="btn primary small" data-shift>Open shift</button></div>` : ''}
         ${held.length ? `<button type="button" class="btn ghost small" data-held>Held sales <span class="count">${held.length}</span></button>` : ''}
         ${shifts && sh ? `<button type="button" class="btn ghost small" data-shift>Shift · since ${fmtTime(sh.ts)}</button>` : ''}
-        <button type="button" class="btn ghost small" data-payout>${icon('cash')}Pay out</button>
-        <button type="button" class="btn ghost small" data-dayclose>${icon('check')}Close day</button>`;
+        <button type="button" class="btn ghost small" data-payout>${icon('cash')}Pay out</button>`;
     };
     const draw = () => { drawTools(); drawTiles(); drawCart(); };
 
@@ -481,24 +480,8 @@ export function openShiftPanel() {
   });
 }
 
-/** Count the drawer and close a shift (also used by the 19:30 reminder and the morning screen). */
-export function openCloseShift(sh = store.myOpenShift()) {
+/** Close shift = close the day (full count of every way of paying). */
+export function openCloseShift(sh = store.myOpenShift(), opts = {}) {
   if (!sh) return;
-  const f = store.shiftFigures(sh);
-  modal({
-    title: 'Close shift',
-    body: `<p class="small">Shift opened ${fmtTime(sh.ts)}${sh.date !== dayKey() ? ` on ${esc(sh.date)}` : ''} · opening cash ${fmt(sh.openingCash)}</p>
-      <p>Expected in the drawer: <b>${fmt(f.expected)}</b></p>
-      <p class="small muted">Opening cash ${fmt(sh.openingCash)} + cash sales ${fmt(f.cashSales)}${f.cashPayments ? ` + customer payments ${fmt(f.cashPayments)}` : ''}${f.cashIn ? ` + put in ${fmt(f.cashIn)}` : ''}${f.cashRefunds ? ` − refunds ${fmt(f.cashRefunds)}` : ''}${f.cashOut ? ` − taken out ${fmt(f.cashOut)}` : ''}${f.cashPayouts ? ` − pay-outs ${fmt(f.cashPayouts)}` : ''}. Count all the money in the drawer, including the opening cash.</p>${field('Cash counted (TSh)', '<input name="counted" type="number" inputmode="numeric" min="0" step="1" required autofocus>')}<p id="cs-diff" class="small"></p>${field('Note (optional)', '<input name="note">')}`,
-    actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Close shift</button>',
-    onMount: (d2) => d2.addEventListener('input', () => {
-      const v = d2.querySelector('[name=counted]').value;
-      const diff = num(v) - f.expected;
-      d2.querySelector('#cs-diff').innerHTML = v === '' ? '' : diff === 0 ? '<span class="up">Drawer matches.</span>' : diff > 0 ? `<span class="warn-text">${fmt(diff)} more than expected.</span>` : `<span class="neg">${fmt(-diff)} short.</span>`;
-    }),
-    onSubmit: (v) => {
-      const r = store.closeShift(sh, v.counted, v.note);
-      toast(r.difference === 0 ? 'Shift closed — drawer matches' : `Shift closed — ${r.difference > 0 ? 'over' : 'short'} by ${fmt(Math.abs(r.difference))}`);
-    },
-  });
+  import('./dayclose.js').then((m) => m.openCloseShift(sh, opts));
 }

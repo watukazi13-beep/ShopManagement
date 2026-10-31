@@ -1,6 +1,6 @@
 import { store } from '../store.js';
 import { daySummary, profitAndLoss, monthKey, monthLabel, stockValue, num, dayKey } from '../calc.js';
-import { todayCard, openPayout, openDayClose, showDayClose } from './dayclose.js';
+import { todayCard, openPayout, showDayClose } from './dayclose.js';
 import { backupReminder, downloadFullBackup } from './backup.js';
 import { shiftsTodayCard } from './shiftgate.js';
 import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
@@ -136,8 +136,7 @@ export default {
       if (a === 'payout') openPayout();
       if (a === 'backup-full') downloadFullBackup().then(() => draw());
       if (a === 'backup-later') { try { localStorage.setItem('backup-snooze', new Date().toISOString().slice(0, 10)); } catch { /* ignore */ } draw(); }
-      if (a === 'dayclose') openDayClose();
-      if (a === 'dayclose-view') showDayClose(store.dayCloseFor(dayKey()));
+      if (a === 'dayclose-view') showDayClose(store.lastClosing());
       if (a === 'notify') Notification.requestPermission().then(draw);
       if (a === 'rfq') {
         const ids = store.generateRfqs();

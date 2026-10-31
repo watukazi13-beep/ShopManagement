@@ -590,7 +590,9 @@ export function lineAmount(l) {
  * Cash also starts with the cash left in the drawer from the day before.
  * Credit sales bring in no money that day; they are listed separately.
  */
-export function dayClose({ day, sales = [], payments = [], expenses = [], methods = ['Cash'], openingCash = 0, creditName = 'Credit' }) {
+export function dayClose({ day, sales = [], payments = [], expenses = [], methods = ['Cash'], openingCash = 0, creditName = 'Credit', from = null, to = null, moves = [] }) {
+  // A shift closes the day: count everything from the shift's start (or the start of the day) up to now.
+  const inDay = (ts) => (from !== null ? ts >= from && ts < (to ?? Infinity) : dayKey(ts) === day);
   const rows = new Map();
   const row = (m) => {
     const k = m || 'Cash';
@@ -601,7 +603,7 @@ export function dayClose({ day, sales = [], payments = [], expenses = [], method
   const cashName = methods.find((m) => m.toLowerCase() === 'cash') || methods[0] || 'Cash';
   let creditSales = 0, count = 0, total = 0;
   for (const s of sales) {
-    if (s.voided || dayKey(s.ts) !== day) continue;
+    if (s.voided || !inDay(s.ts)) continue;
     if (s.type === 'refund') {
       if (s.credit) creditSales += num(s.total); else row(s.pay).refunds += -num(s.total);
       total += num(s.total);
@@ -611,12 +613,16 @@ export function dayClose({ day, sales = [], payments = [], expenses = [], method
     total += num(s.total);
     if (s.credit) creditSales += num(s.total); else row(s.pay).sales += num(s.total);
   }
-  for (const p of payments) if (dayKey(p.ts) === day) row(p.method).payments += num(p.amount);
-  const payouts = expenses.filter((e) => dayKey(e.ts) === day && e.paidFrom);
+  for (const p of payments) if (inDay(p.ts)) row(p.method).payments += num(p.amount);
+  const payouts = expenses.filter((e) => inDay(e.ts) && e.paidFrom);
   for (const e of payouts) row(e.paidFrom).payouts += num(e.amount);
+  const cashIn = moves.filter((m) => m.type === 'in').reduce((t, m) => t + num(m.amount), 0);
+  const cashOut = moves.filter((m) => m.type === 'out').reduce((t, m) => t + num(m.amount), 0);
   const out = [...rows.values()].map((r) => {
-    const opening = r.method === cashName ? num(openingCash) : 0;
-    return { ...r, opening, expected: money(opening + r.sales + r.payments - r.refunds - r.payouts) };
+    const isCash = r.method === cashName;
+    const opening = isCash ? num(openingCash) : 0;
+    const mi = isCash ? cashIn : 0, mo = isCash ? cashOut : 0;
+    return { ...r, opening, cashIn: mi, cashOut: mo, expected: money(opening + r.sales + r.payments - r.refunds - r.payouts + mi - mo) };
   });
   return {
     day, count, total: money(total), creditSales: money(creditSales), cashName,

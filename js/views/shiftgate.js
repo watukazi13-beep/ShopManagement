@@ -80,8 +80,12 @@ export function checkShiftGate(h = hooks) {
         <p class="muted">${shop} · ${fmtDate(Date.now())}</p>
         <h1>${greeting()}${firstName() ? `, ${esc(firstName())}` : ''}</h1>
         <p class="muted">Open your shift to start selling. Count the money in the drawer first.</p>
-        ${st.last ? `<div class="sg-expect"><span>Last count, ${dayKey(st.last.closedAt) === dayKey() ? 'today' : fmtDate(st.last.closedAt)} ${fmtTime(st.last.closedAt)}</span><b>${fmt(st.last.countedCash)}</b></div>
-        <p class="muted small">If no money was added or taken out since, the drawer should still have this.</p>` : ''}
+        ${(() => {
+          const lc = store.lastClosing();
+          if (lc) return `<div class="sg-expect"><span>Left in the drawer at the last closing, ${dayKey(lc.closedAt) === dayKey() ? 'today' : fmtDate(lc.closedAt)} ${fmtTime(lc.closedAt)}</span><b>${fmt(lc.leftInDrawer)}</b></div>
+            <p class="muted small">If no money was added or taken out since, the drawer should still have this.</p>`;
+          return st.last ? `<div class="sg-expect"><span>Last count, ${dayKey(st.last.closedAt) === dayKey() ? 'today' : fmtDate(st.last.closedAt)} ${fmtTime(st.last.closedAt)}</span><b>${fmt(st.last.countedCash)}</b></div>` : '';
+        })()}
         <label class="sg-field"><span>Cash in the drawer now (TSh)</span>
           <input name="cash" type="number" inputmode="numeric" min="0" step="1" required placeholder="Count the drawer"></label>
         <p class="pin-err" id="sg-err" role="alert"></p>
@@ -95,7 +99,7 @@ export function checkShiftGate(h = hooks) {
         <img src="brand/book-icon.svg" alt="" width="56" height="56">
         <p class="muted">${shop} · ${fmtDate(Date.now())}</p>
         <h1>Shift closed for today</h1>
-        <p class="muted">You closed at <b>${fmtTime(st.last.closedAt)}</b> and counted <b>${fmt(st.last.countedCash)}</b>. Thank you${firstName() ? `, ${esc(firstName())}` : ''} — see you tomorrow.</p>
+        <p class="muted">You closed at <b>${fmtTime(st.last.closedAt)}</b> and counted <b>${fmt(st.last.countedCash)}</b>${st.last.leftInDrawer !== undefined ? `; <b>${fmt(st.last.leftInDrawer)}</b> left in the drawer for tomorrow` : ''}. The day is closed. Thank you${firstName() ? `, ${esc(firstName())}` : ''} — see you tomorrow.</p>
         <button type="button" class="btn ghost block sg-again" data-again>Open another shift today</button>
         ${links}
       </form>`;
@@ -105,26 +109,18 @@ export function checkShiftGate(h = hooks) {
       <form class="lock-card sg-card" novalidate>
         <img src="brand/book-icon.svg" alt="" width="56" height="56">
         <h1>Close the earlier shift first</h1>
-        <p class="muted">Your shift from <b>${fmtDate(st.sh.ts)} ${fmtTime(st.sh.ts)}</b> was not closed. Count the cash in the drawer and close it, then open today's shift.</p>
-        <div class="sg-expect"><span>Expected in the drawer</span><b>${fmt(f.expected)}</b></div>
-        <label class="sg-field"><span>Cash counted (TSh)</span>
-          <input name="counted" type="number" inputmode="numeric" min="0" step="1" required></label>
-        <p class="sg-diff" id="sg-diff"></p>
-        <label class="sg-field"><span>Note (optional)</span><input name="note" placeholder="e.g. forgot to close last night"></label>
+        <p class="muted">Your shift from <b>${fmtDate(st.sh.ts)} ${fmtTime(st.sh.ts)}</b> was not closed. Count the cash and mobile money and close it — that also closes that day. Then open today's shift.</p>
+        <div class="sg-expect"><span>Cash expected in the drawer</span><b>${fmt(f.expected)}</b></div>
         <p class="pin-err" id="sg-err" role="alert"></p>
-        <button class="btn accent big block">Close that shift</button>
+        <button type="button" class="btn accent big block" data-close-stale>Count and close that shift</button>
         ${links}
       </form>`;
-    gateEl.addEventListener('input', () => {
-      const v = gateEl.querySelector('[name=counted]').value;
-      const diff = num(v) - f.expected;
-      gateEl.querySelector('#sg-diff').textContent = v === '' ? '' : diff === 0 ? 'Drawer matches.' : diff > 0 ? `${fmt(diff)} more than expected.` : `${fmt(-diff)} short.`;
-    });
   }
   const form = gateEl.querySelector('form');
   gateEl.querySelector('[data-again]')?.addEventListener('click', () => { SS(`shift-again:${dayKey()}`, '1'); checkShiftGate(); });
+  gateEl.querySelector('[data-close-stale]')?.addEventListener('click', () => openCloseShift(st.sh, { summary: false }));
   form.addEventListener('submit', (e) => {
-    if (st.mode === 'closed') { e.preventDefault(); return; }
+    if (st.mode !== 'open') { e.preventDefault(); return; }
     e.preventDefault();
     const err = gateEl.querySelector('#sg-err');
     try {
@@ -134,11 +130,6 @@ export function checkShiftGate(h = hooks) {
         store.openShift(num(v));
         askNotify();
         toast(`Shift opened — have a good day${firstName() ? `, ${firstName()}` : ''}`);
-      } else {
-        const v = form.counted.value;
-        if (v === '' || num(v) < 0) throw new Error('Type the cash you counted');
-        const r = store.closeShift(st.sh, num(v), form.note.value.trim() || 'Closed the next time the app was opened');
-        toast(r.difference === 0 ? 'Earlier shift closed — drawer matches' : `Earlier shift closed — ${r.difference > 0 ? 'over' : 'short'} by ${fmt(Math.abs(r.difference))}`);
       }
       setTimeout(() => checkShiftGate(), 50);
     } catch (ex) { err.textContent = ex.message; }
