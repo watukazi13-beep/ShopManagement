@@ -808,14 +808,15 @@ export const store = {
   },
   // ---------- PIN for opening / closing a shift ----------
   _pinSalt(email) { return `${this.shop?.id || 'local'}:${String(email || '').toLowerCase()}`; },
+  _staffPin() { return (this.settings.staff || []).find((x) => x.id === this.activeStaff?.id)?.pin || this.activeStaff?.pin || ''; },
   _pinEmail() { return String(this.user?.email || 'this-device').toLowerCase(); },
   /** Does the person using the app have a PIN? (shared-till staff always do) */
   hasPin() {
-    if (this.activeStaff) return !!this.activeStaff.pin;
+    if (this.activeStaff) return !!this._staffPin();
     return !!this.settings.memberPins?.[this._pinEmail()];
   },
   async verifyPin(pin) {
-    if (this.activeStaff) return (await hashPin(pin, this.shop?.id || 'local')) === this.activeStaff.pin;
+    if (this.activeStaff) return (await hashPin(pin, this.shop?.id || 'local')) === this._staffPin();
     const email = this._pinEmail();
     const want = this.settings.memberPins?.[email];
     return !!want && (await hashPin(pin, this._pinSalt(email))) === want;

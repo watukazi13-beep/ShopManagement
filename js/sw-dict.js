@@ -315,4 +315,15 @@ export const SW_PAIRS = [
   ['Cash expected in the drawer', 'Pesa inayotarajiwa kwenye droo'], ['Count and close that shift', 'Hesabu na funga zamu hiyo'], ['Pay-outs ({})', 'Malipo ({})'],
   ['start {}', 'mwanzo {}'], ['sales {}', 'mauzo {}'], ['paid debts {}', 'madeni yaliyolipwa {}'], ['put in {}', 'iliyowekwa {}'], ['refunds −{}', 'marejesho −{}'], ['pay-outs −{}', 'malipo −{}'], ['taken out −{}', 'iliyotolewa −{}'],
   ['today {}', 'leo {}'],
+  // ---------- PIN for shifts, reopen ----------
+  ['Your PIN to open the shift', 'PIN yako kufungua zamu'], ['Your PIN to close the shift', 'PIN yako kufunga zamu'], ['Closing the shift also closes the day.', 'Kufunga zamu kunafunga siku pia.'],
+  ['Create your PIN', 'Tengeneza PIN yako'], ['Choose a 4-digit PIN. You will type it each time you open or close a shift.', 'Chagua PIN ya tarakimu 4. Utaiandika kila unapofungua au kufunga zamu.'], ['New PIN', 'PIN mpya'], ['PIN', 'PIN'],
+  ['Save PIN', 'Hifadhi PIN'], ['Continue', 'Endelea'], ['PIN saved', 'PIN imehifadhiwa'], ['PIN removed', 'PIN imeondolewa'], ['Remove PIN', 'Ondoa PIN'], ['Set PIN', 'Weka PIN'], ['Change PIN', 'Badilisha PIN'], ['PIN saved for {}', 'PIN imehifadhiwa kwa {}'],
+  ['No PIN yet', 'Bado hakuna PIN'], ['{} has no PIN yet. A PIN is needed to open and close a shift.', '{} bado hana PIN. PIN inahitajika kufungua na kufunga zamu.'], ['Ask the shop owner to set it in', 'Mwombe mmiliki wa duka aiweke kwenye'], ['Settings → People with access → Set PIN', 'Mipangilio → Watu wenye ruhusa → Weka PIN'],
+  ['OK', 'Sawa'], ['· PIN set', '· PIN imewekwa'], ['· no PIN yet', '· bado hakuna PIN'], ['{} · PIN set', '{} · PIN imewekwa'], ['{} · no PIN yet', '{} · bado hakuna PIN'],
+  ['This person types the PIN each time they open or close a shift. Tell them the PIN in person.', 'Mtu huyu ataandika PIN kila anapofungua au kufunga zamu. Mwambie PIN ana kwa ana.'], ['New 4-digit PIN', 'PIN mpya ya tarakimu 4'], ['Set PIN · {}', 'Weka PIN · {}'], ['Change PIN · {}', 'Badilisha PIN · {}'],
+  ['Reopen', 'Fungua tena'], ['Reopen shift', 'Fungua zamu tena'], ['Reopen {} shift', 'Fungua tena zamu ya {}'], ['Shift started at', 'Zamu ilianza saa'], ['Shift reopened from {}', 'Zamu imefunguliwa tena kuanzia {}'],
+  ['The shift was closed at', 'Zamu ilifungwa saa'], ['. Reopening removes that closing (and today\'s day closing), so the shift can be counted and closed again tonight.', '. Kufungua tena kunaondoa ufungaji huo (na ufungaji wa siku ya leo), ili zamu ihesabiwe na kufungwa tena usiku.'],
+  ['Sales are not affected — they belong to the day. Any other shift {} opened later today is removed. You can undo this in Change history.', 'Mauzo hayaathiriki — ni ya siku. Zamu nyingine yoyote ya {} iliyofunguliwa baadaye leo inaondolewa. Unaweza kutendua hili kwenye Historia ya mabadiliko.'],
+  ['Only the owner can set PINs', 'Mmiliki tu anaweza kuweka PIN'], ['Only the owner or a manager can reopen a shift', 'Mmiliki au meneja tu anaweza kufungua zamu tena'],
 ];

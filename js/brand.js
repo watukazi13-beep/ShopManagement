@@ -2,7 +2,7 @@
 export const APP_NAME = 'Shop Manager';
 export const MAKER = 'Greenlight Developers';
 export const AUTHOR = 'Michael Kepha';
-export const VERSION = '4.11'; // shown in Settings → About; raise it with each release
+export const VERSION = '4.12'; // shown in Settings → About; raise it with each release
 export const CREDIT = `Developed by ${MAKER} · Author: ${AUTHOR}`;
 
 /**

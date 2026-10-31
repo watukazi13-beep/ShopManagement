@@ -868,6 +868,16 @@ with sync_playwright() as p:
     check('Short' in pg.locator('#money-body').inner_text(), 'Money → Days lists the closed day')
     pg.evaluate("import('/js/store.js').then(({ store }) => { const d = new Date(); d.setDate(d.getDate() + 1); const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); window.__open2 = store.openingCashFor(k); })"); pg.wait_for_timeout(200)
     check(pg.evaluate('window.__open2') == cash_exp - 3000, "tomorrow starts with the cash left in the drawer")
+    # --- Closed by accident: the owner reopens it from Home → Shifts today (from 07:46)
+    go('#/home'); pg.wait_for_timeout(300)
+    n_dc = len(data(pg)['dayclose'])
+    pg.locator('.shifts-card [data-reopen]').last.click(); pg.wait_for_timeout(250)
+    dlg().locator('[name=start]').fill('07:46'); submit('Reopen shift'); pg.wait_for_timeout(500)
+    ro = pg.evaluate("import('/js/store.js').then(({ store }) => { const s = store.myOpenShift(); return s && { h: new Date(s.ts).getHours(), m: new Date(s.ts).getMinutes(), closed: !!s.closedAt }; })")
+    check(ro and ro['h'] == 7 and ro['m'] == 46 and not ro['closed'] and len(data(pg)['dayclose']) == n_dc - 1, f'owner reopened the shift from 07:46 and its day closing was removed ({ro})')
+    open_history(); undo_row('Reopened'); pg.wait_for_timeout(300)
+    check(len(data(pg)['dayclose']) == n_dc and not pg.evaluate("import('/js/store.js').then(({ store }) => !!store.myOpenShift())"), 'reopening can be undone from Change history')
+    go('#/home')
 
     # --- A service that uses stock: photocopy uses paper
     ream = item(pg, 'Ream A4 Double A')
