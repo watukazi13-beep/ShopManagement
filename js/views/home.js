@@ -28,22 +28,13 @@ export default {
       let hideInstall = isInstalled();
       try { hideInstall ||= localStorage.getItem('install-dismissed') === '1'; } catch { /* ignore */ }
       el.innerHTML = `
-        ${hideInstall ? '' : `<section class="card install-card">
-          <div class="grow"><b>Install the app</b><small>Opens from your home screen and works offline.</small></div>
-          <button class="btn primary" data-act="install">${icon('download')}Install</button>
-          <button class="icon-btn" data-act="install-later" aria-label="Not now">${icon('x')}</button>
-        </section>`}
-
-        ${store.can('settings') && !store.settings.setupDone ? `
-        <section class="card soft getting-started compact-banner">
-          <div class="grow"><b>Set up your shop</b><small>A few quick steps: shop details and logo, how customers pay, receipts, categories, restocking${store.mode === 'local' ? '' : ', your staff'} and your items.</small></div>
-          <div class="row-btns"><button class="btn primary" data-act="setup">Start setup</button><button class="btn ghost" data-act="setup-later">Not now</button></div>
-        </section>` : ''}
-
-        ${backupReminder()}
+        <header class="dash-head">
+          <div><p class="hello">${hello}${store.user?.name && store.mode !== 'local' ? ', ' + esc(store.user.name.split(' ')[0]) : ''}</p>
+            <p class="dash-date">${new Date().toLocaleDateString('en-GB', { weekday: 'long' })} · ${fmtDate(Date.now())}</p></div>
+          <p class="dash-updated"><i class="${store.mode === 'local' ? '' : store.online ? (store.pending ? 'busy' : 'on') : 'off'}"></i>Updated ${fmtTime(Date.now())}${store.mode === 'local' ? '' : store.online ? (store.pending ? ' · syncing' : ' · synced') : ' · offline'}</p>
+        </header>
         ${shiftNowCard()}
         <section class="hero dash-hero">
-          <p class="hello">${hello}${store.user?.name && store.mode !== 'local' ? ', ' + esc(store.user.name.split(' ')[0]) : ''}</p>
           <p class="hero-label">Sold today</p>
           <p class="hero-figure">${fmt(today.revenue)}</p>
           <p class="hero-sub">${today.count} sale${today.count === 1 ? '' : 's'}${boss ? ` · ${fmt(today.profit)} gross profit` : ''}</p>
@@ -54,6 +45,19 @@ export default {
             ${boss ? `<button class="btn ghost" data-act="expense">${icon('receipt')}Add expense</button>` : ''}
           </div>
         </section>
+        <div class="slim-banners">
+        ${hideInstall ? '' : `<section class="card install-card">
+          <div class="grow"><b>Install the app</b><small>Opens from your home screen and works offline.</small></div>
+          <button class="btn primary" data-act="install">${icon('download')}Install</button>
+          <button class="icon-btn" data-act="install-later" aria-label="Not now">${icon('x')}</button>
+        </section>`}
+        ${store.can('settings') && !store.settings.setupDone ? `
+        <section class="card soft getting-started compact-banner">
+          <div class="grow"><b>Set up your shop</b><small>A few quick steps: shop details and logo, how customers pay, receipts, categories, restocking${store.mode === 'local' ? '' : ', your staff'} and your items.</small></div>
+          <div class="row-btns"><button class="btn primary" data-act="setup">Start setup</button><button class="btn ghost" data-act="setup-later">Not now</button></div>
+        </section>` : ''}
+        ${backupReminder()}
+        </div>
         ${boss ? `<div class="dash-row">${weekCard()}${latestShiftsCard()}</div>` : ''}
         <div class="home-cols">
         <div class="home-col">

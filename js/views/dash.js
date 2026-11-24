@@ -72,12 +72,17 @@ export function shiftNowCard() {
 
 /** Today in tiles. Sellers don't see profit. */
 export function todayTiles() {
-  const { cash } = drawerNow();
   const exp = store.data.expenses.filter((e) => dayKey(e.ts) === dayKey()).reduce((x, e) => x + num(e.amount), 0);
   const { other } = drawerNow();
   const otherTotal = other.reduce((x, r) => x + num(r.sales) + num(r.payments), 0);
+  // Today so far against the same day last week, up to the same time.
+  const now = Date.now();
+  const lwEnd = now - 7 * DAY, lwStart = new Date(`${dayKey(lwEnd)}T00:00:00`).getTime();
+  const lw = store.data.sales.filter((x) => !x.voided && x.ts >= lwStart && x.ts <= lwEnd).reduce((t, x) => t + num(x.total), 0);
+  const td = daySummary(store.data.sales).revenue;
+  const pct = lw ? Math.round(((td - lw) / lw) * 100) : null;
   const tiles = [
-    ['In the drawer', fmt(cash), 'cash now', 'main'],
+    ['Same time last week', fmt(lw), pct === null ? (td ? 'no sales then' : '—') : `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% today`, pct === null ? '' : pct >= 0 ? 'up' : 'down'],
     ['Other money today', fmt(otherTotal), other.map((r) => r.method).join(', ') || 'mobile money, bank', ''],
     ['Expenses today', fmt(exp), 'pay-outs and other costs', ''],
   ];

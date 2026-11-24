@@ -1278,3 +1278,20 @@ body.app-locked { overflow: hidden; }
 .ls-pays { display: flex; flex-wrap: wrap; gap: 6px; }
 .ls-pays span { font-size: .78rem; background: var(--surface-2); border-radius: 999px; padding: 3px 10px; color: var(--muted); }
 .ls-pays b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* 4.15: top of Home */
+.dash-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin: 2px 0 12px; }
+.dash-head .hello { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--ink); }
+.dash-date { margin: 0; font-size: .82rem; color: var(--muted); }
+.dash-updated { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: .76rem; color: var(--muted); }
+.dash-updated i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.dash-updated i.on { background: var(--good, #2E7D32); } .dash-updated i.busy { background: var(--warn); } .dash-updated i.off { background: var(--bad); }
+.kpi.up strong { color: var(--good, #2E7D32); } .kpi.down strong { color: inherit; }
+.kpi.up small { color: var(--good, #2E7D32); font-weight: 700; } .kpi.down small { color: var(--bad); font-weight: 700; }
+@media (max-width: 520px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; } .kpi { padding: 8px 9px; } .kpi strong { font-size: .95rem; } .kpi span { font-size: .7rem; } }
+.slim-banners > .card { padding: 10px 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.slim-banners > .card small { display: none; }
+.slim-banners > .card .btn { min-height: 36px; padding: 6px 12px; font-size: .86rem; }
+.slim-banners > .card .grow b { font-size: .92rem; }
+@media (min-width: 700px) { .slim-banners > .card small { display: block; } }
+@media (max-width: 520px) { .kpis { grid-template-columns: 1fr 1fr; gap: 8px; } .kpi:nth-child(3):last-child { grid-column: 1 / -1; } .kpi strong { font-size: 1rem; overflow: visible; } .kpi span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }

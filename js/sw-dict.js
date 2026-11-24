@@ -341,4 +341,5 @@ export const SW_PAIRS = [
   ['Mon', 'Jtt'], ['Tue', 'Jnn'], ['Wed', 'Jtn'], ['Thu', 'Alh'], ['Fri', 'Ijm'], ['Sat', 'Jms'], ['Sun', 'Jpl'], ['Sales in the last 7 days', 'Mauzo ya siku 7 zilizopita'],
   ['Latest shifts', 'Zamu za karibuni'], ['All closings', 'Ufungaji wote'], ['Cash should be', 'Taslimu inapaswa kuwa'], ['Cash counted', 'Taslimu iliyohesabiwa'], ['Left in drawer', 'Iliyobaki droo'],
   ['No shifts yet.', 'Bado hakuna zamu.'], ['{} – now', '{} – sasa'], ['Closed {}', 'Imefungwa {}'], ['matches', 'iko sawa'],
+  ['Same time last week', 'Muda huu wiki iliyopita'], ['{}% today', '{}% leo'], ['no sales then', 'hakukuwa na mauzo'], ['Updated {}', 'Imesasishwa {}'], ['synced', 'imesawazishwa'], ['syncing', 'inasawazisha'], ['offline', 'nje ya mtandao'],
 ];
