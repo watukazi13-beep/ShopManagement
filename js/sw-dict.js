@@ -343,4 +343,5 @@ export const SW_PAIRS = [
   ['No shifts yet.', 'Bado hakuna zamu.'], ['{} – now', '{} – sasa'], ['Closed {}', 'Imefungwa {}'], ['matches', 'iko sawa'],
   ['Same time last week', 'Muda huu wiki iliyopita'], ['{}% today', '{}% leo'], ['no sales then', 'hakukuwa na mauzo'], ['Updated {}', 'Imesasishwa {}'], ['synced', 'imesawazishwa'], ['syncing', 'inasawazisha'], ['offline', 'nje ya mtandao'],
   ['Started with', 'Ilianza na'], ['View full closing', 'Ona ufungaji wote'], ['Show {} more', 'Onyesha {} zaidi'], ['Tap a shift to see its money.', 'Gusa zamu kuona pesa zake.'],
+  ['Paid from the drawer', 'Iliyolipwa kutoka droo'], ['pay-outs today', 'malipo ya leo'], ['Other costs today', 'Gharama nyingine leo'], ['not from the drawer', 'si kutoka droo'],
 ];

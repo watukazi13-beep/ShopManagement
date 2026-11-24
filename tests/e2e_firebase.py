@@ -180,6 +180,7 @@ with sync_playwright() as p:
     check(pg.locator('#shift-gate').count() == 0 and len(shifts) == 1 and shifts[0]['openingCash'] == 10000 and shifts[0]['by'] == 'seller@gmail.com', 'seller opened the shift (saved online, allowed by the rules)')
     navs = pg.locator('[data-nav]').evaluate_all('els => els.map(e => e.dataset.nav)')
     check(navs == ['home', 'sell', 'stock', 'settings'], f'seller sees only Home, Sell, Stock (+Settings): {navs}')
+    check('Other costs today' not in pg.locator('.kpis').inner_text() and 'Paid from the drawer' in pg.locator('.kpis').inner_text(), 'seller sees only what was paid from the drawer, not the other costs')
     check(pg.locator('section:not(.day-card) .stats').count() == 0 and 'gross profit' not in pg.locator('.hero-sub').inner_text() and 'profit' not in pg.locator('.day-card').inner_text().lower(), "seller does not see profit figures (only today's money to count)")
     go('#/money')
     check(pg.locator('.hero').count() == 1, 'seller sent back to Home when opening Money')

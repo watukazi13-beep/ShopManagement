@@ -161,6 +161,8 @@ export default {
     el.addEventListener('toggle', (e) => { const id = e.target.dataset?.ls; if (!id) return; if (e.target.open) openShifts.add(id); else openShifts.delete(id); }, true);
     draw();
     const off = onInstallChange(draw);
-    return { update: draw, destroy: off };
+    // Times, "Close by" and the drawer move on even when nothing is sold: redraw every minute.
+    const tick = setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) draw(); }, 60000);
+    return { update: draw, destroy: () => { clearInterval(tick); off?.(); } };
   },
 };

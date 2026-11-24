@@ -1310,3 +1310,7 @@ body.app-locked { overflow: hidden; }
 .ls-more { display: none; margin-top: 8px; }
 @media (max-width: 700px) { .ls-list:not(.all) .ls-extra { display: none; } .ls-more { display: flex; } }
 @media (max-width: 560px) { .ls-grid div:first-child { grid-column: auto; } .ls-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ls-grid div:last-child { grid-column: 1 / -1; } }
+
+/* 4.17: four tiles on wide screens, 2 x 2 on phones */
+.kpis:has(.kpi:nth-child(4)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 520px) { .kpis:has(.kpi:nth-child(4)) { grid-template-columns: 1fr 1fr; } }

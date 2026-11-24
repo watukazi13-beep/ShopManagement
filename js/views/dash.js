@@ -72,7 +72,10 @@ export function shiftNowCard() {
 
 /** Today in tiles. Sellers don't see profit. */
 export function todayTiles() {
-  const exp = store.data.expenses.filter((e) => dayKey(e.ts) === dayKey()).reduce((x, e) => x + num(e.amount), 0);
+  const exp = store.data.expenses.filter((e) => !e.deleted && dayKey(e.ts) === dayKey()).reduce((x, e) => x + num(e.amount), 0);
+  const df = store.dayFigures(dayKey());
+  const fromDrawer = num((df.rows.find((r) => r.method === df.cashName) || {}).payouts);
+  const otherCosts = Math.max(0, exp - fromDrawer);
   const { other } = drawerNow();
   const otherTotal = other.reduce((x, r) => x + num(r.sales) + num(r.payments), 0);
   // Today so far against the same day last week, up to the same time.
@@ -84,7 +87,8 @@ export function todayTiles() {
   const tiles = [
     ['Same time last week', fmt(lw), pct === null ? (td ? 'no sales then' : '—') : `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% today`, pct === null ? '' : pct >= 0 ? 'up' : 'down'],
     ['Other money today', fmt(otherTotal), other.map((r) => r.method).join(', ') || 'mobile money, bank', ''],
-    ['Expenses today', fmt(exp), 'pay-outs and other costs', ''],
+    ['Paid from the drawer', fmt(fromDrawer), 'pay-outs today', ''],
+    ...(store.can('reports') ? [['Other costs today', fmt(otherCosts), 'not from the drawer', '']] : []),
   ];
   return `<div class="kpis">${tiles.map(([l, v, s, c]) => `<div class="kpi ${c}"><span>${l}</span><strong>${v}</strong><small>${s}</small></div>`).join('')}</div>`;
 }
