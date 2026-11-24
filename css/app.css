@@ -1314,3 +1314,9 @@ body.app-locked { overflow: hidden; }
 /* 4.17: four tiles on wide screens, 2 x 2 on phones */
 .kpis:has(.kpi:nth-child(4)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 520px) { .kpis:has(.kpi:nth-child(4)) { grid-template-columns: 1fr 1fr; } }
+
+/* 4.18 */
+.bar em { font-size: .74rem; font-weight: 600; }
+.bars.empty { height: 70px; }
+.week-empty { margin: 4px 0 0; font-size: .88rem; }
+.bars.empty { display: none; }

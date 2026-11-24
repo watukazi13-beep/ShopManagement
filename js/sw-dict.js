@@ -344,4 +344,6 @@ export const SW_PAIRS = [
   ['Same time last week', 'Muda huu wiki iliyopita'], ['{}% today', '{}% leo'], ['no sales then', 'hakukuwa na mauzo'], ['Updated {}', 'Imesasishwa {}'], ['synced', 'imesawazishwa'], ['syncing', 'inasawazisha'], ['offline', 'nje ya mtandao'],
   ['Started with', 'Ilianza na'], ['View full closing', 'Ona ufungaji wote'], ['Show {} more', 'Onyesha {} zaidi'], ['Tap a shift to see its money.', 'Gusa zamu kuona pesa zake.'],
   ['Paid from the drawer', 'Iliyolipwa kutoka droo'], ['pay-outs today', 'malipo ya leo'], ['Other costs today', 'Gharama nyingine leo'], ['not from the drawer', 'si kutoka droo'],
+  ["Close {}'s shift", 'Funga zamu ya {}'], ["Close {}'s shift? {} opened it at {} and may still be selling. Closing counts the drawer and closes the day.", 'Funga zamu ya {}? {} aliifungua saa {} na huenda bado anauza. Kufunga kunahesabu droo na kufunga siku.'],
+  ['Yes, close it', 'Ndiyo, ifunge'], ['{} today', '{} leo'], ['not in the drawer', 'haiko droo'], ['nothing yet today', 'bado hakuna leo'], ['No sales in the last 7 days yet.', 'Bado hakuna mauzo katika siku 7 zilizopita.'],
 ];

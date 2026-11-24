@@ -62,7 +62,7 @@ export function shiftNowCard() {
         ${other.length ? `<div class="sn-other">${other.map((r) => `<div><span>${esc(r.method)}</span><b>${fmt(r.sales + r.payments)}</b></div>`).join('')}</div>` : ''}
       </div>
       <div class="row-btns">
-        ${canClose ? `<button type="button" class="btn ${stale || late ? 'danger' : 'primary'}" data-act="close-shift">${icon('check')}Close shift</button>` : ''}
+        ${canClose ? `<button type="button" class="btn ${stale || late ? 'danger' : 'primary'}" data-act="close-shift">${icon('check')}${mine ? 'Close shift' : `Close ${esc((sh.byName || 'their').split(/\s+/)[0])}'s shift`}</button>` : ''}
         ${!sh && store.settings.useShifts !== false ? `<button type="button" class="btn primary" data-act="open-shift">${icon('clock')}Open shift</button>` : ''}
         <button type="button" class="btn ghost" data-act="payout">${icon('cash')}Pay out</button>
         ${closedToday ? '<button type="button" class="btn ghost" data-act="dayclose-view">View closing</button>' : ''}
@@ -84,9 +84,14 @@ export function todayTiles() {
   const lw = store.data.sales.filter((x) => !x.voided && x.ts >= lwStart && x.ts <= lwEnd).reduce((t, x) => t + num(x.total), 0);
   const td = daySummary(store.data.sales).revenue;
   const pct = lw ? Math.round(((td - lw) / lw) * 100) : null;
+  const cashName = (store.settings.payMethods || ['Cash']).find((m) => m.toLowerCase() === 'cash') || 'Cash';
+  const otherNames = (store.settings.payMethods || []).filter((m) => m !== cashName && !store.isCreditPay(m));
+  const otherTile = other.length
+    ? [other.length === 1 ? `${other[0].method} today` : 'Other money today', fmt(otherTotal), other.length === 1 ? 'not in the drawer' : other.map((r) => `${r.method} ${fmt(num(r.sales) + num(r.payments)).replace(/^TSh\s*/, '')}`).join(' · '), '']
+    : otherNames.length ? [otherNames.length === 1 ? `${otherNames[0]} today` : 'Other money today', fmt(0), otherNames.length === 1 ? 'nothing yet today' : otherNames.join(', '), ''] : null;
   const tiles = [
     ['Same time last week', fmt(lw), pct === null ? (td ? 'no sales then' : '—') : `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% today`, pct === null ? '' : pct >= 0 ? 'up' : 'down'],
-    ['Other money today', fmt(otherTotal), other.map((r) => r.method).join(', ') || 'mobile money, bank', ''],
+    ...(otherTile ? [otherTile] : []),
     ['Paid from the drawer', fmt(fromDrawer), 'pay-outs today', ''],
     ...(store.can('reports') ? [['Other costs today', fmt(otherCosts), 'not from the drawer', '']] : []),
   ];
@@ -99,13 +104,15 @@ export function weekCard() {
   const vals = days.map((d) => daySummary(store.data.sales, d).revenue);
   const max = Math.max(1, ...vals);
   const total = vals.reduce((a, b) => a + b, 0);
+  const short = (v) => (v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(v >= 100000 ? 0 : 1)}k` : String(v));
   const wd = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short' });
   return `
     <section class="card week-card">
       <div class="card-head"><h2>Last 7 days</h2><span class="muted small">${fmt(total)} · average ${fmt(Math.round(total / 7))} a day</span></div>
-      <div class="bars" role="img" aria-label="Sales in the last 7 days">${days.map((d, i) => `
+      ${total ? '' : '<p class="muted week-empty">No sales in the last 7 days yet.</p>'}
+      <div class="bars ${total ? '' : 'empty'}" role="img" aria-label="Sales in the last 7 days">${days.map((d, i) => `
         <div class="bar ${i === 6 ? 'today' : ''}" title="${fmtDate(new Date(`${d}T12:00:00`).getTime())}: ${fmt(vals[i])}">
-          <em>${vals[i] ? fmt(vals[i]).replace(/^TSh\s*/, '') : ''}</em>
+          <em>${vals[i] ? short(vals[i]) : ''}</em>
           <i style="height:${Math.max(vals[i] ? 4 : 0, Math.round((vals[i] / max) * 100))}%"></i>
           <span>${i === 6 ? 'Today' : wd(d)}</span>
         </div>`).join('')}</div>
@@ -157,6 +164,6 @@ export function latestShiftsCard(limit = 7) {
       <div class="card-head"><h2>Latest shifts</h2><a class="link" href="#/money?tab=days">All closings</a></div>
       ${list.length ? `<ul class="ls-list ${showAllShifts ? 'all' : ''}">${list.map(item).join('')}</ul>
         ${list.length > 3 && !showAllShifts ? `<button type="button" class="btn ghost block ls-more" data-act="more-shifts">Show ${list.length - 3} more</button>` : ''}` : '<p class="muted small">No shifts yet.</p>'}
-      <p class="muted small ls-hint">Tap a shift to see its money.</p>
+      ${list.length ? '<p class="muted small ls-hint">Tap a shift to see its money.</p>' : ''}
     </section>`;
 }

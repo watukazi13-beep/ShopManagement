@@ -4,7 +4,7 @@ import { openPayout, showDayClose, openCloseShift } from './dayclose.js';
 import { backupReminder, downloadFullBackup } from './backup.js';
 import { openReopenShift } from './shiftgate.js';
 import { shiftNowCard, todayTiles, weekCard, latestShiftsCard, currentShift, openShifts, showMoreShifts } from './dash.js';
-import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
+import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState, confirmBox } from '../ui.js';
 import { showReceipt, openShiftPanel } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
 import { openExpenseForm } from './money.js';
@@ -150,7 +150,13 @@ export default {
         const ids = store.generateRfqs();
         location.hash = ids.length === 1 ? `#/orders?rfq=${ids[0]}` : '#/orders?tab=rfq';
       }
-      if (a === 'close-shift') { const sh = currentShift(); if (sh) openCloseShift(sh); }
+      if (a === 'close-shift') {
+        const sh = currentShift();
+        if (!sh) return;
+        if (sh.id === store.myOpenShift()?.id) { openCloseShift(sh); return; }
+        const name = (sh.byName || 'this person').split(/\s+/)[0];
+        confirmBox(`Close ${name}'s shift? ${name} opened it at ${fmtTime(sh.ts)} and may still be selling. Closing counts the drawer and closes the day.`, { ok: 'Yes, close it', danger: true }).then((yes) => { if (yes) openCloseShift(sh); });
+      }
       if (a === 'open-shift') openShiftPanel();
       if (a === 'more-shifts') { showMoreShifts(); draw(); return; }
       const cid = e.target.closest('[data-closing]')?.dataset.closing;
