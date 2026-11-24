@@ -21,12 +21,29 @@ export default {
       const mk = monthKey();
       const pl = profitAndLoss(store.data, mk);
       const lows = store.lowStock();
-      const recent = store.data.sales.filter((s) => !s.voided).sort((a, b) => b.ts - a.ts).slice(0, 6);
+      const recent = store.data.sales.filter((s) => !s.voided).sort((a, b) => b.ts - a.ts).slice(0, 5);
       const hour = new Date().getHours();
       const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
       let hideInstall = isInstalled();
       try { hideInstall ||= localStorage.getItem('install-dismissed') === '1'; } catch { /* ignore */ }
+      const stockAlerts = `<section class="card">
+          <div class="card-head">
+            <h2>Stock alerts ${lows.length ? `<span class="count bad">${lows.length}</span>` : ''}</h2>
+            ${lows.length ? `<a class="link" href="#/stock?filter=low">See all</a>` : ''}
+          </div>
+          ${lows.length ? `
+            <ul class="rows">
+              ${lows.slice(0, 6).map((p) => `
+                <li class="row">
+                  <div class="grow"><b>${esc(p.item.name)}</b><small>${fmtQty(p.stock)} ${esc(p.item.unit || '')} left${p.daysLeft !== null ? ` · about ${Math.floor(p.daysLeft)} days` : ''}</small></div>
+                  ${statusPill(p.status)}
+                </li>`).join('')}
+            </ul>
+            ${store.can('orders') ? `<button class="btn primary block" data-act="rfq">${icon('orders')}Create requests for quotation</button>` : ''}
+          ` : `<p class="muted">${store.data.items.length ? 'All items are above their reorder level.' : 'Alerts appear here when items run low.'}</p>`}
+          ${'Notification' in window && Notification.permission === 'default' ? `<p class="small notify-hint"><button class="link" data-act="notify">Turn on phone alerts</button> to be told when stock runs low.</p>` : ''}
+        </section>`;
       el.innerHTML = `
         <header class="dash-head">
           <div><p class="hello">${hello}${store.user?.name && store.mode !== 'local' ? ', ' + esc(store.user.name.split(' ')[0]) : ''}</p>
@@ -61,23 +78,7 @@ export default {
         ${boss ? `<div class="dash-row">${weekCard()}${latestShiftsCard()}</div>` : ''}
         <div class="home-cols">
         <div class="home-col">
-        <section class="card">
-          <div class="card-head">
-            <h2>Stock alerts ${lows.length ? `<span class="count bad">${lows.length}</span>` : ''}</h2>
-            ${lows.length ? `<a class="link" href="#/stock?filter=low">See all</a>` : ''}
-          </div>
-          ${lows.length ? `
-            <ul class="rows">
-              ${lows.slice(0, 6).map((p) => `
-                <li class="row">
-                  <div class="grow"><b>${esc(p.item.name)}</b><small>${fmtQty(p.stock)} ${esc(p.item.unit || '')} left${p.daysLeft !== null ? ` · about ${Math.floor(p.daysLeft)} days` : ''}</small></div>
-                  ${statusPill(p.status)}
-                </li>`).join('')}
-            </ul>
-            ${store.can('orders') ? `<button class="btn primary block" data-act="rfq">${icon('orders')}Create requests for quotation</button>` : ''}
-          ` : `<p class="muted">${store.data.items.length ? 'All items are above their reorder level.' : 'Alerts appear here when items run low.'}</p>`}
-          ${'Notification' in window && Notification.permission === 'default' ? `<p class="small notify-hint"><button class="link" data-act="notify">Turn on phone alerts</button> to be told when stock runs low.</p>` : ''}
-        </section>
+        ${boss ? '' : stockAlerts}
 
         ${(() => {
           const incoming = store.openPos().sort((a, b) => (a.expectedTs || 0) - (b.expectedTs || 0));
@@ -91,6 +92,14 @@ export default {
           </section>`;
         })()}
 
+        <section class="card">
+          <div class="card-head"><h2>Recent sales</h2>${store.can('reports') ? '<a class="link" href="#/money?tab=sales">All sales</a>' : ''}</div>
+          ${recent.length ? `<ul class="rows">${recent.map((s) => `
+            <li class="row tap" data-sale="${s.id}">
+              <div class="grow"><b>${esc(s.lines.map((l) => l.name).slice(0, 2).join(', '))}${s.lines.length > 2 ? ` +${s.lines.length - 2}` : ''}</b><small>${fmtTime(s.ts)} · ${esc(s.pay)}${s.customer ? ' · ' + esc(s.customer) : ''}${s.byName && store.can('orders') ? ` · <span data-no-tr>${esc(s.byName.split(/\s+/)[0])}</span>` : ''}</small></div>
+              <span class="num">${fmt(s.total)}</span>
+            </li>`).join('')}</ul>` : emptyState('No sales yet', 'Sales you record will show here.', '<a class="btn primary" href="#/sell">Make the first sale</a>')}
+        </section>
         </div>
         <div class="home-col">
         ${boss ? `
@@ -120,15 +129,9 @@ export default {
             </div>
           </section>`;
         })()}` : ''}
+        ${boss ? stockAlerts : ''}
 
-        <section class="card">
-          <div class="card-head"><h2>Recent sales</h2>${store.can('reports') ? '<a class="link" href="#/money?tab=sales">All sales</a>' : ''}</div>
-          ${recent.length ? `<ul class="rows">${recent.map((s) => `
-            <li class="row tap" data-sale="${s.id}">
-              <div class="grow"><b>${esc(s.lines.map((l) => l.name).slice(0, 2).join(', '))}${s.lines.length > 2 ? ` +${s.lines.length - 2}` : ''}</b><small>${fmtTime(s.ts)} · ${esc(s.pay)}${s.customer ? ' · ' + esc(s.customer) : ''}</small></div>
-              <span class="num">${fmt(s.total)}</span>
-            </li>`).join('')}</ul>` : emptyState('No sales yet', 'Sales you record will show here.', '<a class="btn primary" href="#/sell">Make the first sale</a>')}
-        </section>        </div>
+        </div>
         </div>`;
     };
     el.addEventListener('click', (e) => {
