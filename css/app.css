@@ -1215,3 +1215,13 @@ body.has-shift-bar #toasts { top: calc(var(--top) + env(safe-area-inset-top) + 6
   .seg.tabs:not(.money-tabs) { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   .seg.tabs button { overflow-wrap: anywhere; }
 }
+
+/* ---------- App lock (4.13): PIN before anything shows ---------- */
+#app-lock { position: fixed; inset: 0; z-index: 250; display: grid; place-items: center; padding: 20px; overflow-y: auto; outline: none; color: #fff; background: radial-gradient(120% 80% at 50% 30%, #2A3540 0%, var(--slate) 55%, var(--slate-2) 100%); }
+body.app-locked { overflow: hidden; }
+.al-card .al-shop { margin: 0; font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: rgb(255 255 255 / 60%); }
+.al-card .small { font-size: .84rem; }
+.al-card .small b { color: #fff; }
+.al-card .btn.block { width: 100%; margin-top: 6px; }
+.pin-pad.off { opacity: .35; pointer-events: none; }
+.pin-pad > span { display: block; }

@@ -326,4 +326,10 @@ export const SW_PAIRS = [
   ['The shift was closed at', 'Zamu ilifungwa saa'], ['. Reopening removes that closing (and today\'s day closing), so the shift can be counted and closed again tonight.', '. Kufungua tena kunaondoa ufungaji huo (na ufungaji wa siku ya leo), ili zamu ihesabiwe na kufungwa tena usiku.'],
   ['Sales are not affected — they belong to the day. Any other shift {} opened later today is removed. You can undo this in Change history.', 'Mauzo hayaathiriki — ni ya siku. Zamu nyingine yoyote ya {} iliyofunguliwa baadaye leo inaondolewa. Unaweza kutendua hili kwenye Historia ya mabadiliko.'],
   ['Only the owner can set PINs', 'Mmiliki tu anaweza kuweka PIN'], ['Only the owner or a manager can reopen a shift', 'Mmiliki au meneja tu anaweza kufungua zamu tena'],
+  // ---------- App lock (4.13) ----------
+  ['You need a PIN to open the app.', 'Unahitaji PIN kufungua programu.'], ['Choose 4 digits. You will type them each time you open the app.', 'Chagua tarakimu 4. Utaziandika kila unapofungua programu.'],
+  ['To make sure it is right', 'Kuhakikisha ni sahihi'], ['The two PINs were not the same — start again', 'PIN mbili hazikufanana — anza upya'], ['Welcome back', 'Karibu tena'],
+  ['Enter your PIN to open the app', 'Weka PIN yako kufungua programu'], ['Too many wrong PINs — wait {} seconds', 'PIN zisizo sahihi zimezidi — subiri sekunde {}'],
+  ['Wrong PIN — {} tries left', 'PIN si sahihi — zimebaki nafasi {}'], ['Wrong PIN — {} try left', 'PIN si sahihi — imebaki nafasi {}'],
+  ['PIN saved — you will use it to open the app', 'PIN imehifadhiwa — utaitumia kufungua programu'], ['Could not save the PIN', 'Imeshindikana kuhifadhi PIN'],
 ];

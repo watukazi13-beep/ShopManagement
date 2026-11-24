@@ -88,6 +88,18 @@ with sync_playwright() as p:
     credit = 'Developed by Greenlight Developers · Author: Michael Kepha'
     check(pg.locator('.gate-card .credit p').inner_text() == credit and pg.locator('.gate-card .credit img').count() == 1, 'developer logo and credit on the start screen')
     pg.click('#g-local'); pg.wait_for_timeout(900)
+
+    # --- App lock: nothing shows until the PIN is typed (first time: the owner creates it)
+    def lock_type(code):
+        for c in code: pg.locator(f'#app-lock [data-d="{c}"]').click()
+        pg.wait_for_timeout(350)
+    lk = pg.locator('#app-lock')
+    check(lk.is_visible() and 'Create your PIN' in lk.inner_text(), 'the app opens behind a PIN screen (owner creates a PIN the first time)')
+    pg.screenshot(path=OUT + 'app-lock-create.png')
+    lock_type('2468'); check('Type the PIN again' in lk.inner_text(), 'the new PIN is typed twice')
+    lock_type('1357'); check('not the same' in lk.inner_text() and 'Create your PIN' in lk.inner_text(), 'two different PINs: start again')
+    lock_type('2468'); lock_type('2468')
+    check(lk.count() == 0 and bool(data(pg)['meta']['settings'].get('memberPins')), 'PIN created; the app opens')
     check(pg.locator('.hero-figure').inner_text().startswith('TSh 0'), 'home loads in device mode')
     check(pg.locator('.getting-started').count() == 1, 'Home offers the shop setup')
     import base64
@@ -595,9 +607,9 @@ with sync_playwright() as p:
     check('No shift open' in pg.locator('#pos-tools').inner_text(), 'Sell asks to open a shift')
     pg.locator('#pos-tools [data-shift]').click(); pg.wait_for_timeout(200)
     dlg().locator('[name=cash]').fill('20000'); submit('Open shift'); pg.wait_for_timeout(300)
-    check(pg.locator('dialog[open] .sheet-head', has_text='Create your PIN').count() == 1, 'opening a shift asks for a PIN (the owner creates one the first time)')
+    check(pg.locator('dialog[open] .sheet-head', has_text='PIN').count() == 1, 'opening a shift asks for the PIN')
     pin('2468')
-    check(bool(data(pg)['meta']['settings'].get('memberPins')), 'the PIN is saved only as a hash')
+    check(all(len(v) == 64 for v in data(pg)['meta']['settings'].get('memberPins').values() if v), 'the PIN is saved only as a hash')
     check(pg.locator('#pos-tools').inner_text().startswith('Shift'), 'shift opened')
     pg.locator('.tile:has(.tile-name:text-is("Rice"))').click()
     if W < 900: pg.click('#cart-bar'); pg.wait_for_timeout(150)
@@ -1045,6 +1057,27 @@ with sync_playwright() as p:
         check(sw <= W, f'{h} fits the screen width ({sw}px of {W}px)')
 
     # --- Offline: app must open with no network
+    # --- App lock again: away 5 minutes (or a new open) asks for the PIN; wrong PINs are limited
+    pg.evaluate("localStorage.removeItem('shared-till'); sessionStorage.removeItem('till-staff')")
+    pg.reload(); pg.wait_for_timeout(1500)
+    check(pg.locator('#app-lock').count() == 0, 'a reload a moment later (e.g. a new version) does not ask again')
+    pg.evaluate("sessionStorage.setItem('app-unlocked', JSON.stringify({ u: 'this-device', at: Date.now() - 6 * 60000 }))")
+    pg.reload(); pg.wait_for_timeout(1500)
+    lk = pg.locator('#app-lock')
+    check(lk.is_visible() and 'Enter your PIN to open the app' in lk.inner_text(), 'after 5 minutes away the app asks for the PIN again')
+    pg.screenshot(path=OUT + 'app-lock.png')
+    lock_type('1111'); check('4 tries left' in lk.inner_text(), 'a wrong PIN is refused')
+    for _ in range(4): lock_type('1111')
+    check('wait' in lk.inner_text() and lk.locator('.pin-pad.off').count() == 1, 'after 5 wrong PINs: wait a minute')
+    for c in '2468': lk.locator(f'[data-d="{c}"]').dispatch_event('click')
+    pg.wait_for_timeout(300); check(lk.count() == 1, 'no tries while waiting')
+    pg.evaluate("localStorage.setItem('pin-wait-until', '0')"); pg.wait_for_timeout(1100)
+    lock_type('2468'); check(lk.count() == 0, 'the right PIN opens the app')
+    pg.evaluate("sessionStorage.removeItem('app-unlocked')"); pg.evaluate("import('/js/store.js').then(({ store }) => { store.role = 'staff'; store.settings.memberPins = {}; })")
+    pg.evaluate("import('/js/views/applock.js').then((m) => m.lockNow())"); pg.wait_for_timeout(300)
+    check('No PIN yet' in lk.inner_text() and 'Set PIN' in lk.inner_text() and lk.locator('.pin-pad').count() == 0, 'a seller with no PIN cannot get in: ask the owner')
+    pg.evaluate("sessionStorage.setItem('app-unlocked', JSON.stringify({ u: 'this-device', at: Date.now() }))"); pg.reload(); pg.wait_for_timeout(1500)
+
     go('#/home'); pg.wait_for_timeout(1500)
     soap_before = item(pg, 'Bar soap')['stock']
     ctx.set_offline(True)

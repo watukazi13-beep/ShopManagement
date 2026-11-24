@@ -9,6 +9,7 @@ import { offerUndo } from './views/changes.js';
 import { initTill, lock as lockTill, staffChip } from './views/staff.js';
 import { checkShiftGate, paintShiftBar, startShiftReminders } from './views/shiftgate.js';
 import { initLang } from './i18n.js';
+import { checkAppLock, forgetUnlock, whenUnlocked } from './views/applock.js';
 
 applyTheme();
 import home from './views/home.js';
@@ -149,6 +150,7 @@ function showWaiting(text) {
 }
 
 async function signOut() {
+  forgetUnlock();
   await store.backend.signOut();
   history.replaceState(null, '', '#/home');
   location.reload();
@@ -218,7 +220,7 @@ function paintChrome() {
     const chip = staffChip();
     if (slot.innerHTML !== chip) { slot.innerHTML = chip; slot.querySelector('#staff-chip')?.addEventListener('click', lockTill); }
   }
-  if (store.ready) { checkShiftGate({ signOut, switchUser: lockTill }); paintShiftBar(); }
+  if (store.ready) { checkAppLock({ signOut }); checkShiftGate({ signOut, switchUser: lockTill }); paintShiftBar(); }
   const lows = store.ready ? store.lowStock().length : 0;
   const stockLink = document.querySelector('[data-nav=stock]');
   if (stockLink) stockLink.dataset.badge = lows ? String(lows) : '';
@@ -338,7 +340,7 @@ async function boot() {
       setTimeout(() => store.dailyLowStockCheck(), 2000);
       setTimeout(() => store.dailySnapshot().catch((e) => console.warn('snapshot', e)), 6000);
       startShiftReminders();
-      offerTrialData();
+      whenUnlocked(offerTrialData);
     }
   });
 }

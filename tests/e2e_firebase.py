@@ -58,6 +58,8 @@ with sync_playwright() as p:
     def dlg(): return pg.locator('dialog[open]').last
     def go(h): pg.evaluate(f"location.hash='{h}'"); pg.wait_for_timeout(350)
     def sign_in(u):
+        # The PIN lock itself is tested in e2e.py; here each person counts as just unlocked.
+        pg.evaluate(f"sessionStorage.setItem('app-unlocked', JSON.stringify({{ u: {json.dumps(u['email'].lower())}, at: Date.now() }}))")
         next_user(u); pg.click('#g-signin'); pg.wait_for_timeout(700)
     def sign_out():
         go('#/settings'); pg.click('[data-act=signout]'); pg.wait_for_timeout(200)
