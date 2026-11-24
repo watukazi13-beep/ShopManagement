@@ -332,4 +332,13 @@ export const SW_PAIRS = [
   ['Enter your PIN to open the app', 'Weka PIN yako kufungua programu'], ['Too many wrong PINs — wait {} seconds', 'PIN zisizo sahihi zimezidi — subiri sekunde {}'],
   ['Wrong PIN — {} tries left', 'PIN si sahihi — zimebaki nafasi {}'], ['Wrong PIN — {} try left', 'PIN si sahihi — imebaki nafasi {}'],
   ['PIN saved — you will use it to open the app', 'PIN imehifadhiwa — utaitumia kufungua programu'], ['Could not save the PIN', 'Imeshindikana kuhifadhi PIN'],
+  // ---------- Home dashboard (4.14) ----------
+  ['Still open from {}', 'Bado iko wazi tangu {}'], ['No shift open', 'Hakuna zamu iliyo wazi'], ['Opened {}', 'Imefunguliwa {}'], ['started with {}', 'ilianza na {}'],
+  ['Closed the shift at {}', 'Alifunga zamu saa {}'], ['{} taken out', '{} zimetolewa'], ['No shift yet today', 'Bado hakuna zamu leo'], ['The shift opens when the first person starts work', 'Zamu hufunguliwa mtu wa kwanza anapoanza kazi'],
+  ['Money in the drawer now', 'Pesa iliyopo droo sasa'], ['counted at closing', 'imehesabiwa wakati wa kufunga'], ['should be there now', 'inapaswa kuwepo sasa'],
+  ['In the drawer', 'Kwenye droo'], ['cash now', 'taslimu sasa'], ['Other money today', 'Pesa nyingine leo'], ['mobile money, bank', 'pesa ya simu, benki'],
+  ['Expenses today', 'Matumizi leo'], ['pay-outs and other costs', 'malipo na gharama nyingine'], ['Last 7 days', 'Siku 7 zilizopita'], ['average {} a day', 'wastani {} kwa siku'],
+  ['Mon', 'Jtt'], ['Tue', 'Jnn'], ['Wed', 'Jtn'], ['Thu', 'Alh'], ['Fri', 'Ijm'], ['Sat', 'Jms'], ['Sun', 'Jpl'], ['Sales in the last 7 days', 'Mauzo ya siku 7 zilizopita'],
+  ['Latest shifts', 'Zamu za karibuni'], ['All closings', 'Ufungaji wote'], ['Cash should be', 'Taslimu inapaswa kuwa'], ['Cash counted', 'Taslimu iliyohesabiwa'], ['Left in drawer', 'Iliyobaki droo'],
+  ['No shifts yet.', 'Bado hakuna zamu.'], ['{} – now', '{} – sasa'], ['Closed {}', 'Imefungwa {}'], ['matches', 'iko sawa'],
 ];

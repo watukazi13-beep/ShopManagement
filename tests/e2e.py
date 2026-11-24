@@ -992,7 +992,7 @@ with sync_playwright() as p:
     check(pg.locator('#shift-gate').count() == 0, 'Asha (manager) is not asked to open a shift')
     go('#/home'); pg.wait_for_timeout(300)
     card = pg.locator('.shifts-card').inner_text()
-    check('Shifts today' in card and 'Juma' in card and 'Open' in card, 'Home shows the manager who opened a shift today')
+    check('Latest shifts' in card and 'Juma' in card and 'Open' in card, 'Home shows the manager who opened a shift today')
     pg.locator('.shifts-card').screenshot(path=OUT + 'shifts-card.png')
     navs = pg.locator('[data-nav]').evaluate_all('els => els.map(e => e.dataset.nav)')
     check('money' in navs and 'orders' in navs, 'Asha (manager) gets the manager menu')

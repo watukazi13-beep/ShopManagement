@@ -1,10 +1,11 @@
 import { store } from '../store.js';
 import { daySummary, profitAndLoss, monthKey, monthLabel, stockValue, num, dayKey } from '../calc.js';
-import { todayCard, openPayout, showDayClose } from './dayclose.js';
+import { openPayout, showDayClose, openCloseShift } from './dayclose.js';
 import { backupReminder, downloadFullBackup } from './backup.js';
-import { shiftsTodayCard, openReopenShift } from './shiftgate.js';
+import { openReopenShift } from './shiftgate.js';
+import { shiftNowCard, todayTiles, weekCard, latestShiftsCard, currentShift } from './dash.js';
 import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
-import { showReceipt } from './sell.js';
+import { showReceipt, openShiftPanel } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
 import { openExpenseForm } from './money.js';
 import { installApp, isInstalled, onInstallChange } from '../install.js';
@@ -32,17 +33,6 @@ export default {
           <button class="btn primary" data-act="install">${icon('download')}Install</button>
           <button class="icon-btn" data-act="install-later" aria-label="Not now">${icon('x')}</button>
         </section>`}
-        <section class="hero">
-          <p class="hello">${hello}${store.user?.name && store.mode !== 'local' ? ', ' + esc(store.user.name.split(' ')[0]) : ''}</p>
-          <p class="hero-label">Sold today</p>
-          <p class="hero-figure">${fmt(today.revenue)}</p>
-          <p class="hero-sub">${today.count} sale${today.count === 1 ? '' : 's'}${boss ? ` · ${fmt(today.profit)} gross profit` : ''}</p>
-          <div class="quick">
-            <a class="btn accent big" href="#/sell">${icon('sell')}New sale</a>
-            ${store.can('orders') ? `<button class="btn ghost" data-act="receive">${icon('truck')}Receive stock</button>` : ''}
-            ${boss ? `<button class="btn ghost" data-act="expense">${icon('receipt')}Add expense</button>` : ''}
-          </div>
-        </section>
 
         ${store.can('settings') && !store.settings.setupDone ? `
         <section class="card soft getting-started compact-banner">
@@ -51,6 +41,20 @@ export default {
         </section>` : ''}
 
         ${backupReminder()}
+        ${shiftNowCard()}
+        <section class="hero dash-hero">
+          <p class="hello">${hello}${store.user?.name && store.mode !== 'local' ? ', ' + esc(store.user.name.split(' ')[0]) : ''}</p>
+          <p class="hero-label">Sold today</p>
+          <p class="hero-figure">${fmt(today.revenue)}</p>
+          <p class="hero-sub">${today.count} sale${today.count === 1 ? '' : 's'}${boss ? ` · ${fmt(today.profit)} gross profit` : ''}</p>
+          ${todayTiles()}
+          <div class="quick">
+            <a class="btn accent big" href="#/sell">${icon('sell')}New sale</a>
+            ${store.can('orders') ? `<button class="btn ghost" data-act="receive">${icon('truck')}Receive stock</button>` : ''}
+            ${boss ? `<button class="btn ghost" data-act="expense">${icon('receipt')}Add expense</button>` : ''}
+          </div>
+        </section>
+        ${boss ? `<div class="dash-row">${weekCard()}${latestShiftsCard()}</div>` : ''}
         <div class="home-cols">
         <div class="home-col">
         <section class="card">
@@ -71,8 +75,6 @@ export default {
           ${'Notification' in window && Notification.permission === 'default' ? `<p class="small notify-hint"><button class="link" data-act="notify">Turn on phone alerts</button> to be told when stock runs low.</p>` : ''}
         </section>
 
-        ${todayCard()}
-        ${shiftsTodayCard()}
         ${(() => {
           const incoming = store.openPos().sort((a, b) => (a.expectedTs || 0) - (b.expectedTs || 0));
           if (!incoming.length) return '';
@@ -144,6 +146,10 @@ export default {
         const ids = store.generateRfqs();
         location.hash = ids.length === 1 ? `#/orders?rfq=${ids[0]}` : '#/orders?tab=rfq';
       }
+      if (a === 'close-shift') { const sh = currentShift(); if (sh) openCloseShift(sh); }
+      if (a === 'open-shift') openShiftPanel();
+      const cid = e.target.closest('[data-closing]')?.dataset.closing;
+      if (cid && !e.target.closest('button')) { const rec = store.data.dayclose.find((d) => d.id === cid); if (rec) showDayClose(rec); return; }
       const sid = e.target.closest('[data-sale]')?.dataset.sale;
       if (sid) showReceipt(store.data.sales.find((s) => s.id === sid));
     });

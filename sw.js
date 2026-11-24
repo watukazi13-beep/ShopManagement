@@ -1,6 +1,6 @@
 // Service worker: makes the app open and work with no internet.
 // Bump VERSION whenever app files change so devices pick up the update.
-const VERSION = 'v48';
+const VERSION = 'v49';
 const CACHE = `shop-${VERSION}`;
 const APP_FILES = [
   './',
@@ -36,6 +36,7 @@ const APP_FILES = [
   './js/views/shiftgate.js',
   './js/views/pin.js',
   './js/views/applock.js',
+  './js/views/dash.js',
   './js/i18n.js',
   './js/sw-dict.js',
   './js/views/money.js',
