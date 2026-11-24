@@ -108,6 +108,11 @@ export function weekCard() {
     </section>`;
 }
 
+/** Which shifts are opened up on Home (kept while Home redraws). */
+export const openShifts = new Set();
+let showAllShifts = false;
+export const showMoreShifts = () => { showAllShifts = true; };
+
 /** The latest shifts with their money: sales by way of paying, cash should be / counted, taken out, left. */
 export function latestShiftsCard(limit = 7) {
   if (!store.can('orders')) return '';
@@ -121,26 +126,33 @@ export function latestShiftsCard(limit = 7) {
     const total = rec ? num(rec.total) : live ? num(live.total) : 0;
     const cash = rows.find((r) => r.method === (live?.cashName || 'Cash')) || rows[0] || {};
     const reopen = s.closedAt && dayOf(s) === today ? `<button type="button" class="btn ghost small" data-reopen="${s.id}">Reopen</button>` : '';
-    const status = s.closedAt ? diffPill(s.difference, s.closedAt) : `<span class="pill ${dayOf(s) !== today ? 'bad' : 'good'}">${dayOf(s) !== today ? 'Still open' : 'Open now'}</span>`;
-    return `<li class="ls-item ${rec ? 'tap' : ''}" ${rec ? `data-closing="${esc(rec.id)}"` : ''}>
-      <div class="ls-head">
+    const status = s.closedAt ? diffPill(s.difference) : `<span class="pill ${dayOf(s) !== today ? 'bad' : 'good'}">${dayOf(s) !== today ? 'Still open' : 'Open now'}</span>`;
+    const ix = list.indexOf(s);
+    return `<li class="ls-li ${ix >= 3 ? 'ls-extra' : ''}"><details class="ls-item" data-ls="${s.id}" ${openShifts.has(s.id) ? 'open' : ''}>
+      <summary class="ls-head">
         <div class="grow"><b><span data-no-tr>${esc(s.byName || s.by || 'Someone')}</span> · ${dayOf(s) === today ? 'Today' : fmtDate(s.ts)}</b>
-          <small>${fmtTime(s.ts)} – ${s.closedAt ? fmtTime(s.closedAt) : 'now'} · started with ${fmt(s.openingCash)}</small></div>
+          <small>${fmtTime(s.ts)} – ${s.closedAt ? fmtTime(s.closedAt) : 'now'}</small></div>
+        <span class="ls-sales num">${fmt(total)}</span>
         ${status}${reopen}
+      </summary>
+      <div class="ls-body">
+        <div class="ls-grid">
+          <div><span>Started with</span><b>${fmt(s.openingCash)}</b></div>
+          <div><span>Cash should be</span><b>${fmt(s.closedAt ? s.expectedCash : cash.expected)}</b></div>
+          <div><span>Cash counted</span><b>${s.closedAt ? fmt(s.countedCash) : '—'}</b></div>
+          <div><span>Taken out</span><b>${s.closedAt ? fmt(s.takenOut) : '—'}</b></div>
+          <div><span>Left in drawer</span><b>${s.closedAt ? fmt(s.leftInDrawer) : '—'}</b></div>
+        </div>
+        ${pays ? `<div class="ls-pays">${pays}</div>` : ''}
+        ${rec ? `<button type="button" class="btn ghost small" data-closing="${esc(rec.id)}">View full closing</button>` : ''}
       </div>
-      <div class="ls-grid">
-        <div><span>Sales</span><b>${fmt(total)}</b></div>
-        <div><span>Cash should be</span><b>${fmt(s.closedAt ? s.expectedCash : cash.expected)}</b></div>
-        <div><span>Cash counted</span><b>${s.closedAt ? fmt(s.countedCash) : '—'}</b></div>
-        <div><span>Taken out</span><b>${s.closedAt ? fmt(s.takenOut) : '—'}</b></div>
-        <div><span>Left in drawer</span><b>${s.closedAt ? fmt(s.leftInDrawer) : '—'}</b></div>
-      </div>
-      ${pays ? `<div class="ls-pays">${pays}</div>` : ''}
-    </li>`;
+    </details></li>`;
   };
   return `
     <section class="card shifts-card">
       <div class="card-head"><h2>Latest shifts</h2><a class="link" href="#/money?tab=days">All closings</a></div>
-      ${list.length ? `<ul class="ls-list">${list.map(item).join('')}</ul>` : '<p class="muted small">No shifts yet.</p>'}
+      ${list.length ? `<ul class="ls-list ${showAllShifts ? 'all' : ''}">${list.map(item).join('')}</ul>
+        ${list.length > 3 && !showAllShifts ? `<button type="button" class="btn ghost block ls-more" data-act="more-shifts">Show ${list.length - 3} more</button>` : ''}` : '<p class="muted small">No shifts yet.</p>'}
+      <p class="muted small ls-hint">Tap a shift to see its money.</p>
     </section>`;
 }

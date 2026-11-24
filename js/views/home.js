@@ -3,7 +3,7 @@ import { daySummary, profitAndLoss, monthKey, monthLabel, stockValue, num, dayKe
 import { openPayout, showDayClose, openCloseShift } from './dayclose.js';
 import { backupReminder, downloadFullBackup } from './backup.js';
 import { openReopenShift } from './shiftgate.js';
-import { shiftNowCard, todayTiles, weekCard, latestShiftsCard, currentShift } from './dash.js';
+import { shiftNowCard, todayTiles, weekCard, latestShiftsCard, currentShift, openShifts, showMoreShifts } from './dash.js';
 import { esc, fmt, fmtQty, fmtTime, fmtDate, icon, statusPill, emptyState } from '../ui.js';
 import { showReceipt, openShiftPanel } from './sell.js';
 import { openPurchaseForm, isLate } from './orders.js';
@@ -133,7 +133,7 @@ export default {
     };
     el.addEventListener('click', (e) => {
       const ro = e.target.closest('[data-reopen]')?.dataset.reopen;
-      if (ro) { openReopenShift(ro); return; }
+      if (ro) { e.preventDefault(); openReopenShift(ro); return; }
       const a = e.target.closest('[data-act]')?.dataset.act;
       if (a === 'install') installApp();
       if (a === 'setup') openSetup();
@@ -152,11 +152,13 @@ export default {
       }
       if (a === 'close-shift') { const sh = currentShift(); if (sh) openCloseShift(sh); }
       if (a === 'open-shift') openShiftPanel();
+      if (a === 'more-shifts') { showMoreShifts(); draw(); return; }
       const cid = e.target.closest('[data-closing]')?.dataset.closing;
-      if (cid && !e.target.closest('button')) { const rec = store.data.dayclose.find((d) => d.id === cid); if (rec) showDayClose(rec); return; }
+      if (cid) { const rec = store.data.dayclose.find((d) => d.id === cid); if (rec) showDayClose(rec); return; }
       const sid = e.target.closest('[data-sale]')?.dataset.sale;
       if (sid) showReceipt(store.data.sales.find((s) => s.id === sid));
     });
+    el.addEventListener('toggle', (e) => { const id = e.target.dataset?.ls; if (!id) return; if (e.target.open) openShifts.add(id); else openShifts.delete(id); }, true);
     draw();
     const off = onInstallChange(draw);
     return { update: draw, destroy: off };

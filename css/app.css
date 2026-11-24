@@ -1295,3 +1295,18 @@ body.app-locked { overflow: hidden; }
 .slim-banners > .card .grow b { font-size: .92rem; }
 @media (min-width: 700px) { .slim-banners > .card small { display: block; } }
 @media (max-width: 520px) { .kpis { grid-template-columns: 1fr 1fr; gap: 8px; } .kpi:nth-child(3):last-child { grid-column: 1 / -1; } .kpi strong { font-size: 1rem; overflow: visible; } .kpi span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
+
+/* 4.16: latest shifts as one-line rows that open up */
+.ls-li { list-style: none; }
+.ls-list { gap: 8px; }
+.ls-item { padding: 0; gap: 0; }
+.ls-item > summary { list-style: none; cursor: pointer; padding: 10px 12px; }
+.ls-item > summary::-webkit-details-marker { display: none; }
+.ls-item[open] > summary { border-bottom: 1px dashed var(--line); }
+.ls-head .ls-sales { font-weight: 800; font-size: .98rem; margin-left: auto; }
+.ls-body { padding: 10px 12px; display: grid; gap: 8px; justify-items: start; }
+.ls-body .ls-grid { width: 100%; }
+.ls-hint { margin: 8px 0 0; font-size: .76rem; }
+.ls-more { display: none; margin-top: 8px; }
+@media (max-width: 700px) { .ls-list:not(.all) .ls-extra { display: none; } .ls-more { display: flex; } }
+@media (max-width: 560px) { .ls-grid div:first-child { grid-column: auto; } .ls-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ls-grid div:last-child { grid-column: 1 / -1; } }
