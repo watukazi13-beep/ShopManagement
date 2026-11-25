@@ -4,6 +4,7 @@ import { store } from '../store.js';
 import { dayKey, num } from '../calc.js';
 import { esc, fmt, fmtDate, fmtTime, icon, modal, toast, field, printHtml, toInputDate, fromInputDate } from '../ui.js';
 import { askPin } from './pin.js';
+import { atShopOrStop } from './geo.js';
 
 const moneyMethods = () => (store.settings.payMethods || ['Cash']).filter((m) => !store.isCreditPay(m));
 const diffText = (d) => (d == null ? '—' : d === 0 ? 'Matches' : `${d > 0 ? 'Over' : 'Short'} ${fmt(Math.abs(d))}`);
@@ -177,9 +178,12 @@ export function todayCard() {
  */
 export function openCloseShift(sh = store.myOpenShift(), opts = {}) {
   if (!sh) return;
-  askPin({ title: 'Your PIN to close the shift', reason: 'Closing the shift also closes the day.' }).then((ok) => { if (ok) closeShiftForm(sh, opts); });
+  atShopOrStop('close the shift').then((g) => {
+    if (!g.ok) return;
+    askPin({ title: 'Your PIN to close the shift', reason: 'Closing the shift also closes the day.' }).then((ok) => { if (ok) closeShiftForm(sh, { ...opts, geo: g.geo }); });
+  });
 }
-function closeShiftForm(sh, { onDone, summary = true } = {}) {
+function closeShiftForm(sh, { onDone, summary = true, geo = null } = {}) {
   let f = store.shiftDayFigures(sh);
   const day = f.day;
   const parts = (r) => [r.opening ? `start ${fmt(r.opening)}` : '', r.sales ? `sales ${fmt(r.sales)}` : '', r.payments ? `paid debts ${fmt(r.payments)}` : '', r.cashIn ? `put in ${fmt(r.cashIn)}` : '',
@@ -238,7 +242,7 @@ function closeShiftForm(sh, { onDone, summary = true } = {}) {
     onSubmit: (v, { form }) => {
       const counted = {};
       form.querySelectorAll('#dc-rows tr').forEach((tr) => { counted[tr.dataset.m] = tr.querySelector('.dc-count').value; });
-      const rec = store.closeShiftDay(sh, { counted, takenOut: num(v.takenOut), note: v.note });
+      const rec = store.closeShiftDay(sh, { counted, takenOut: num(v.takenOut), note: v.note, extra: geo ? { closeGeo: geo } : {} });
       toast(rec.totalDiff === 0 ? 'Shift closed — everything matches' : `Shift closed — ${rec.totalDiff > 0 ? 'over' : 'short'} by ${fmt(Math.abs(rec.totalDiff))}`, { kind: rec.totalDiff < 0 ? 'warn' : 'ok', ms: 6000 });
       setTimeout(() => { if (summary) showDayClose(rec); onDone?.(rec); }, 250);
     },

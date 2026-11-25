@@ -1095,6 +1095,36 @@ with sync_playwright() as p:
     check('No PIN yet' in lk.inner_text() and 'Set PIN' in lk.inner_text() and lk.locator('.pin-pad').count() == 0, 'a seller with no PIN cannot get in: ask the owner')
     pg.evaluate("sessionStorage.setItem('app-unlocked', JSON.stringify({ u: 'this-device', at: Date.now() }))"); pg.reload(); pg.wait_for_timeout(1500)
 
+    # --- Shop location: shifts open and close only within 200 m of the shop
+    pg.evaluate("""import('/js/store.js').then(({ store }) => { const sh = store.myOpenShift(); if (sh) store.closeShiftDay(sh, { counted: {} }); store.saveSettings({ geoOn: true, shopLat: -2.5318581, shopLng: 32.9479953, shopRadius: 200 }); })"""); pg.wait_for_timeout(300)
+    pg.evaluate("void (window.__fakeGeo = () => Promise.resolve({ lat: -2.5228, lng: 32.9480, acc: 15 }))")  # about 1 km away
+    pg.evaluate("import('/js/views/sell.js').then((m) => m.openShiftPanel())"); pg.wait_for_timeout(300)
+    dlg().locator('[name=cash]').fill('5000'); dlg().get_by_role('button', name='Open shift').click(); pg.wait_for_timeout(500)
+    t = dlg().inner_text()
+    check('You are not at the shop' in t and '1.0 km' in t and '200 m' in t, 'opening a shift 1 km from the shop is refused')
+    pg.screenshot(path=OUT + 'geo-far.png')
+    dlg().get_by_role('button', name='OK').click(); pg.wait_for_timeout(200)
+    check(pg.evaluate("import('/js/store.js').then(({ store }) => !store.myOpenShift())"), 'no shift opened from far away')
+    pg.evaluate("void (window.__fakeGeo = () => Promise.reject({ code: 1 }))")
+    pg.evaluate("import('/js/views/sell.js').then((m) => m.openShiftPanel())"); pg.wait_for_timeout(300)
+    dlg().locator('[name=cash]').fill('5000'); dlg().get_by_role('button', name='Open shift').click(); pg.wait_for_timeout(500)
+    check('Allow location' in dlg().inner_text() and 'Permissions' in dlg().inner_text(), 'location blocked: says how to allow it')
+    pg.evaluate("void (window.__fakeGeo = () => Promise.resolve({ lat: -2.5325, lng: 32.9481, acc: 25 }))")  # about 75 m away
+    dlg().get_by_role('button', name='Try again').click(); pg.wait_for_timeout(600)
+    pin('2468'); pg.wait_for_timeout(300)
+    sh = pg.evaluate("import('/js/store.js').then(({ store }) => store.myOpenShift())")
+    check(bool(sh) and sh.get('openGeo', {}).get('d', 999) < 200, f"at the shop (about {sh.get('openGeo', {}).get('d') if sh else '?'} m): the shift opens and records how far")
+    pg.evaluate("void (window.__fakeGeo = () => Promise.resolve({ lat: -2.5228, lng: 32.9480, acc: 15 }))")
+    pg.evaluate("import('/js/views/dayclose.js').then((m) => m.openCloseShift())"); pg.wait_for_timeout(500)
+    check('You are not at the shop' in dlg().inner_text(), 'closing a shift away from the shop is refused')
+    dlg().get_by_role('button', name='OK').click(); pg.wait_for_timeout(200)
+    go('#/settings'); pg.locator('summary', has_text='Shifts and sellers').click(); pg.wait_for_timeout(200)
+    check(pg.locator('[name=geoOn]').is_checked() and pg.locator('[name=shopRadius]').input_value() == '200' and pg.locator('[name=openShiftAt]').input_value() == '07:30', 'Settings shows the shop location, 200 m and opening time 07:30')
+    pg.evaluate("void (window.__fakeGeo = () => Promise.resolve({ lat: -2.531900, lng: 32.948000, acc: 10 }))")
+    pg.click('[data-geo-here]'); pg.wait_for_timeout(300)
+    check(pg.locator('[name=shopLat]').input_value() == '-2.531900', '“Use my position now” fills the shop position')
+    pg.evaluate("void (window.__fakeGeo = () => Promise.resolve({ lat: -2.5325, lng: 32.9481, acc: 25 }))")
+
     go('#/home'); pg.wait_for_timeout(1500)
     soap_before = item(pg, 'Bar soap')['stock']
     ctx.set_offline(True)

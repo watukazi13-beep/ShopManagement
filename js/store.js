@@ -27,6 +27,9 @@ export const DEFAULT_SETTINGS = {
   receiptFooter: 'Thank you!',
   useShifts: false,
   sellerMustOpenShift: true,
+  openShiftAt: '07:30',
+  shopRadius: 200,
+  geoOn: false,
   closeShiftAt: '19:30',
   autoWeeklyPo: true,
   weeklyPoDay: 1,
@@ -853,11 +856,11 @@ export const store = {
   myLastClosedShift() {
     return this.data.shifts.filter((s) => s.closedAt && s.by === this.user?.email && (s.staffId || '') === (this.activeStaff?.id || '')).sort((a, b) => b.closedAt - a.closedAt)[0] || null;
   },
-  openShift(openingCash) {
+  openShift(openingCash, extra = {}) {
     if (this.myOpenShift()) throw new Error('You already have an open shift');
     const ts = Date.now();
     const id = this.backend.newId('shifts');
-    this.backend.write([{ type: 'set', col: 'shifts', id, data: { no: docNo('SH', ts), ts, date: dayKey(ts), openingCash: money(openingCash), moves: [], by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}) } }]);
+    this.backend.write([{ type: 'set', col: 'shifts', id, data: { no: docNo('SH', ts), ts, date: dayKey(ts), openingCash: money(openingCash), moves: [], by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}), ...extra } }]);
     return id;
   },
   shiftMove(shift, { type, amount, note = '' }) {
@@ -921,7 +924,7 @@ export const store = {
    * Close the shift and, with it, the day: counted = { Cash: 52000, 'M-Pesa': 18000 }. Cash must be counted.
    * Saves the shift and that day's closing together.
    */
-  closeShiftDay(shift, { counted = {}, takenOut = 0, note = '' }) {
+  closeShiftDay(shift, { counted = {}, takenOut = 0, note = '', extra = {} }) {
     const f = this.shiftDayFigures(shift);
     const rows = f.rows.map((r) => {
       const c = counted[r.method];
@@ -943,7 +946,7 @@ export const store = {
       note, by: this.user?.email || '', byName: this.whoName(), ...(this.activeStaff ? { staffId: this.activeStaff.id } : {}),
     };
     this.backend.write([
-      { type: 'merge', col: 'shifts', id: shift.id, data: { closedAt: now, countedCash: cash.counted, expectedCash: cash.expected, difference: money(cash.counted - cash.expected), totalDiff, takenOut: money(takenOut), leftInDrawer: left, closeNote: note, dayCloseId: id } },
+      { type: 'merge', col: 'shifts', id: shift.id, data: { closedAt: now, countedCash: cash.counted, expectedCash: cash.expected, difference: money(cash.counted - cash.expected), totalDiff, takenOut: money(takenOut), leftInDrawer: left, closeNote: note, dayCloseId: id, ...extra } },
       { type: 'set', col: 'dayclose', id, data: rec },
     ]);
     return { ...rec, id, difference: money(cash.counted - cash.expected) };

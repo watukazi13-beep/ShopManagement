@@ -1320,3 +1320,13 @@ body.app-locked { overflow: hidden; }
 .bars.empty { height: 70px; }
 .week-empty { margin: 4px 0 0; font-size: .88rem; }
 .bars.empty { display: none; }
+
+/* 4.20: shop location */
+.geo-set { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px 12px; margin: 12px 0; display: grid; gap: 8px; }
+.geo-set legend { font-weight: 700; padding: 0 6px; }
+.geo-grid { display: grid; grid-template-columns: 1fr 1fr 110px; gap: 8px; }
+@media (max-width: 520px) { .geo-grid { grid-template-columns: 1fr 1fr; } }
+.geo-msg { display: grid; gap: 6px; }
+.geo-msg p { margin: 0; }
+.geo-big { font-size: 2rem; font-weight: 800; color: var(--bad); letter-spacing: -0.02em; }
+.geo-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; }

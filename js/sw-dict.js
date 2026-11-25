@@ -346,4 +346,18 @@ export const SW_PAIRS = [
   ['Paid from the drawer', 'Iliyolipwa kutoka droo'], ['pay-outs today', 'malipo ya leo'], ['Other costs today', 'Gharama nyingine leo'], ['not from the drawer', 'si kutoka droo'],
   ["Close {}'s shift", 'Funga zamu ya {}'], ["Close {}'s shift? {} opened it at {} and may still be selling. Closing counts the drawer and closes the day.", 'Funga zamu ya {}? {} aliifungua saa {} na huenda bado anauza. Kufunga kunahesabu droo na kufunga siku.'],
   ['Yes, close it', 'Ndiyo, ifunge'], ['{} today', '{} leo'], ['not in the drawer', 'haiko droo'], ['nothing yet today', 'bado hakuna leo'], ['No sales in the last 7 days yet.', 'Bado hakuna mauzo katika siku 7 zilizopita.'],
+  // ---------- Shop location (4.20) ----------
+  ['Checking where you are…', 'Inaangalia ulipo…'], ['You are not at the shop', 'Hauko dukani'], ['You are {} from {}.', 'Uko {} kutoka {}.'],
+  ['You can {} only at the shop, within {} m. Go to the shop and try again.', 'Unaweza {} ukiwa dukani tu, ndani ya mita {}. Nenda dukani ujaribu tena.'],
+  ['open the shift', 'kufungua zamu'], ['close the shift', 'kufunga zamu'], ['Allow location', 'Ruhusu mahali'], ['Location not found', 'Mahali hapajapatikana'],
+  ['To {}, the app must see that you are at the shop.', 'Ili {}, programu lazima ione kuwa uko dukani.'], ['Location is blocked for this app. Turn it on:', 'Mahali pamezuiwa kwa programu hii. Pawashe:'],
+  ['Turn on ', 'Washa '], [' on the phone.', ' kwenye simu.'], ['Tap the ', 'Gusa '], [' or ', ' au '], [' next to the web address, then ', ' karibu na anwani ya wavuti, kisha '], ['Permissions → Location → Allow', 'Ruhusa → Mahali → Ruhusu'],
+  ['Turn on Location on the phone, go near a window or outside the shop door, then tap Try again.', 'Washa Mahali kwenye simu, nenda karibu na dirisha au nje ya mlango wa duka, kisha gusa Jaribu tena.'],
+  ['Shifts open at', 'Zamu hufunguliwa saa'], ['Shop location', 'Mahali pa duka'], ['Shifts can be opened and closed only at the shop', 'Zamu zinaweza kufunguliwa na kufungwa dukani tu'],
+  ['Latitude', 'Latitudo'], ['Longitude', 'Longitudo'], ['Within', 'Ndani ya'], ['Use my position now', 'Tumia mahali nilipo sasa'], ['See on the map', 'Ona kwenye ramani'],
+  ['Stand inside the shop and tap “Use my position now”, then Save. Everyone — owners too — must be this close to open or close a shift.', 'Simama ndani ya duka na gusa “Tumia mahali nilipo sasa”, kisha Hifadhi. Kila mtu — hata wamiliki — lazima awe karibu hivi kufungua au kufunga zamu.'],
+  ['Position taken (within about {} m) — tap Save', 'Mahali pamechukuliwa (takriban mita {}) — gusa Hifadhi'], ['Location is blocked — allow it for this app first', 'Mahali pamezuiwa — paruhusu kwa programu hii kwanza'],
+  ['Could not find your position — try near a window', 'Imeshindikana kupata mahali ulipo — jaribu karibu na dirisha'],
+  ['Monday to Saturday: opening after this time is marked ', 'Jumatatu hadi Jumamosi: kufungua baada ya muda huu kunaandikwa '], [', closing before the closing time ', ', kufunga kabla ya muda wa kufunga '], ['. Sundays are never marked.', '. Jumapili haiandikwi.'],
+  ['Closed early', 'Imefungwa mapema'], ['On time', 'Kwa wakati'],
 ];

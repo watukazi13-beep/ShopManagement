@@ -11,6 +11,7 @@ import { isSharedTill } from './staff.js';
 import { openCloseShift } from './sell.js';
 import { langSwitch } from '../i18n.js';
 import { askPin } from './pin.js';
+import { atShopOrStop } from './geo.js';
 
 const REMIND_EVERY = 15 * 60 * 1000;
 const LS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
@@ -129,10 +130,10 @@ export function checkShiftGate(h = hooks) {
         const v = form.cash.value;
         if (v === '' || num(v) < 0) throw new Error('Type the cash in the drawer (0 if empty)');
         askNotify();
-        askPin({ title: 'Your PIN to open the shift' }).then((ok) => {
+        atShopOrStop('open the shift').then((g) => (g.ok ? askPin({ title: 'Your PIN to open the shift' }).then((ok) => ({ ok, g })) : { ok: false })).then(({ ok, g }) => {
           if (!ok) return;
           try {
-            store.openShift(num(v));
+            store.openShift(num(v), g.geo ? { openGeo: g.geo } : {});
             toast(`Shift opened — have a good day${firstName() ? `, ${firstName()}` : ''}`);
             setTimeout(() => checkShiftGate(), 50);
           } catch (ex) { err.textContent = ex.message; }

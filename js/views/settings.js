@@ -118,7 +118,23 @@ export default {
           <details class="set-sec"><summary>Shifts and sellers<small>Opening and closing the drawer, what sellers may do</small></summary>
           <label class="check"><input type="checkbox" name="useShifts" ${s.useShifts ? 'checked' : ''}> Use shifts: count the cash drawer when opening and closing</label>
           <label class="check"><input type="checkbox" name="sellerMustOpenShift" ${s.sellerMustOpenShift !== false ? 'checked' : ''}> Sellers must open a shift (count the drawer) before they can use the app</label>
+          <div class="field inline"><label for="st-open">Shifts open at</label><input id="st-open" name="openShiftAt" type="time" value="${esc(s.openShiftAt || '07:30')}" style="max-width:130px"></div>
           <div class="field inline"><label for="st-close">Remind to close the shift at</label><input id="st-close" name="closeShiftAt" type="time" value="${esc(s.closeShiftAt || '19:30')}" style="max-width:130px"></div>
+          <p class="muted small">Monday to Saturday: opening after this time is marked <b>Late</b>, closing before the closing time <b>Closed early</b>. Sundays are never marked.</p>
+          <fieldset class="geo-set">
+            <legend>Shop location</legend>
+            <label class="check"><input type="checkbox" name="geoOn" ${s.geoOn ? 'checked' : ''}> Shifts can be opened and closed only at the shop</label>
+            <div class="geo-grid">
+              ${field('Latitude', `<input name="shopLat" inputmode="decimal" value="${esc(s.shopLat ?? '')}" placeholder="-2.531858">`)}
+              ${field('Longitude', `<input name="shopLng" inputmode="decimal" value="${esc(s.shopLng ?? '')}" placeholder="32.947995">`)}
+              ${field('Within', `<select name="shopRadius">${[100, 200, 300, 500].map((m) => `<option value="${m}" ${Number(s.shopRadius || 200) === m ? 'selected' : ''}>${m} m</option>`).join('')}</select>`)}
+            </div>
+            <div class="row-btns">
+              <button type="button" class="btn ghost" data-geo-here>${icon('pin')}Use my position now</button>
+              ${s.shopLat !== undefined && s.shopLat !== '' ? `<a class="btn ghost" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${encodeURIComponent(`${s.shopLat},${s.shopLng}`)}">See on the map</a>` : ''}
+            </div>
+            <p class="muted small">Stand inside the shop and tap “Use my position now”, then Save. Everyone — owners too — must be this close to open or close a shift.</p>
+          </fieldset>
           <label class="check"><input type="checkbox" name="staffCanReceive" ${s.staffCanReceive ? 'checked' : ''}> Sellers can receive deliveries into stock (otherwise only owners and managers)</label>
           <div class="sec-save"><button class="btn primary">Save</button></div></details>
           <details class="set-sec"><summary>Lists<small>Payment methods, expense categories</small></summary>
@@ -154,7 +170,8 @@ export default {
           shopName: v.shopName.trim(), phone: v.phone, email: v.email, address: v.address, tin: v.tin,
           leadDays: num(v.leadDays) || 7, coverDays: num(v.coverDays) || 30, windowDays: num(v.windowDays) || 30,
           paymentDetails: v.paymentDetails, receiptHeader: v.receiptHeader, receiptFooter: v.receiptFooter, taxName: v.taxName || 'VAT', taxRate: Math.max(0, num(v.taxRate)),
-          autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on', useShifts: v.useShifts === 'on', sellerMustOpenShift: v.sellerMustOpenShift === 'on', closeShiftAt: /^\d{1,2}:\d{2}$/.test(v.closeShiftAt || '') ? v.closeShiftAt : '19:30', autoWeeklyPo: v.autoWeeklyPo === 'on', weeklyPoDay: Number(v.weeklyPoDay ?? 1),
+          autoMonthlyRfq: v.autoMonthlyRfq === 'on', rfqNote: v.rfqNote, poNote: v.poNote, staffCanReceive: v.staffCanReceive === 'on', useShifts: v.useShifts === 'on', sellerMustOpenShift: v.sellerMustOpenShift === 'on', closeShiftAt: /^\d{1,2}:\d{2}$/.test(v.closeShiftAt || '') ? v.closeShiftAt : '19:30', openShiftAt: /^\d{1,2}:\d{2}$/.test(v.openShiftAt || '') ? v.openShiftAt : '07:30',
+          geoOn: v.geoOn === 'on' && v.shopLat !== '' && v.shopLng !== '', shopLat: v.shopLat === '' ? '' : Number(v.shopLat), shopLng: v.shopLng === '' ? '' : Number(v.shopLng), shopRadius: Number(v.shopRadius) || 200, autoWeeklyPo: v.autoWeeklyPo === 'on', weeklyPoDay: Number(v.weeklyPoDay ?? 1),
           payMethods: list(v.payMethods).length ? list(v.payMethods) : ['Cash'],
           expenseCategories: list(v.expenseCategories),
         });
@@ -173,6 +190,7 @@ export default {
     };
 
     el.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-geo-here]')) { import('./geo.js').then((m) => m.useMyPosition(el.querySelector('#shop-form'))); return; }
       const a = e.target.closest('[data-act]')?.dataset.act;
       if (a === 'signout') { if (await confirmBox('Sign out of this device?', { ok: 'Sign out' })) { await store.backend.signOut(); history.replaceState(null, '', '#/home'); location.reload(); } }
       if (a === 'notify') { await Notification.requestPermission(); draw(); }
