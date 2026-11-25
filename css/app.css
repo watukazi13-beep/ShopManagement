@@ -1330,3 +1330,13 @@ body.app-locked { overflow: hidden; }
 .geo-msg p { margin: 0; }
 .geo-big { font-size: 2rem; font-weight: 800; color: var(--bad); letter-spacing: -0.02em; }
 .geo-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+
+/* 4.21: Late / On time */
+.sg-late { display: grid; gap: 2px; text-align: left; background: color-mix(in srgb, var(--bad) 14%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent); border-radius: 10px; padding: 10px 12px; margin: 6px 0; }
+.sg-late b { color: var(--bad); }
+.sg-late.warn { background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.sg-late.warn b { color: var(--warn); }
+#shift-gate .sg-late b { color: #FFB4A8; } #shift-gate .sg-late span { color: #fff; }
+.sn-punct { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.sn-punct:empty { display: none; }
+.dc-punct { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 0 8px; }

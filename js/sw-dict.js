@@ -360,4 +360,8 @@ export const SW_PAIRS = [
   ['Could not find your position — try near a window', 'Imeshindikana kupata mahali ulipo — jaribu karibu na dirisha'],
   ['Monday to Saturday: opening after this time is marked ', 'Jumatatu hadi Jumamosi: kufungua baada ya muda huu kunaandikwa '], [', closing before the closing time ', ', kufunga kabla ya muda wa kufunga '], ['. Sundays are never marked.', '. Jumapili haiandikwi.'],
   ['Closed early', 'Imefungwa mapema'], ['On time', 'Kwa wakati'],
+  // ---------- Late / On time (4.21) ----------
+  ['You are late', 'Umechelewa'], ['The shift opens at {}. It is now {} late.', 'Zamu hufunguliwa saa {}. Sasa umechelewa {}.'], ['Late {}', 'Amechelewa {}'], ['Closed early {}', 'Imefungwa mapema {}'],
+  ['Shift opened {} late — opening time is {}', 'Zamu imefunguliwa ikiwa imechelewa {} — muda wa kufungua ni {}'], ['It is before {}', 'Bado ni kabla ya {}'], ['This shift will show “Closed early”.', 'Zamu hii itaonyesha “Imefungwa mapema”.'],
+  ['{} min', 'dakika {}'], ['{} h {} min', 'saa {} dakika {}'], ['{} h', 'saa {}'], ['{} m from the shop', 'mita {} kutoka dukani'], ['Opened {}: {}', 'Imefunguliwa {}: {}'],
 ];

@@ -3,6 +3,7 @@ import { profitAndLoss, monthKey, monthLabel, addMonths, monthRange, num, dayKey
 import { esc, fmt, fmtQty, fmtDate, fmtTime, pct, icon, modal, toast, field, emptyState, confirmBox, downloadFile, toCsv, printHtml, toInputDate, fromInputDate } from '../ui.js';
 import { showReceipt } from './sell.js';
 import { drawCustomers } from './customers.js';
+import { punctualPills } from './punctual.js';
 import { drawQuotes } from './quotes.js';
 
 const minus = (v) => (Math.round(v) > 0 ? '−' : '') + fmt(v);
@@ -252,6 +253,7 @@ export default {
         <div class="row-btns spread"><p>${list.length} day${list.length === 1 ? '' : 's'} closed${short ? ` · <span class="neg">short ${fmt(-short)}</span>` : ''}${over ? ` · <span class="up">over ${fmt(over)}</span>` : ''}</p></div>
         ${list.length ? `<ul class="rows card">${list.map((x) => `
           <li class="row tap" data-day="${x.id}"><div class="grow"><b>${fmtDate(x.ts)}</b><small>${x.count} receipts · ${fmt(x.total)} sales · ${fmt(x.payoutTotal || 0)} paid out · by ${esc(x.byName || x.by)}</small></div>
+            ${(() => { const sh = (d.shifts || store.data.shifts || []).find((s) => s.id === x.shiftId || s.dayCloseId === x.id); return sh ? punctualPills(sh) : ''; })()}
             ${!(x.rows || []).some((r) => r.counted !== null && r.counted !== undefined) ? '<span class="pill warn">Not counted</span>' : `<span class="pill ${x.totalDiff < 0 ? 'bad' : x.totalDiff > 0 ? 'warn' : 'good'}">${x.totalDiff === 0 ? 'Matches' : `${x.totalDiff > 0 ? 'Over' : 'Short'} ${fmt(Math.abs(x.totalDiff))}`}</span>`}</li>`).join('')}</ul>`
           : emptyState('No days closed this month', 'Each evening the seller closes the shift — that count closes the day and shows here.')}`;
       body.querySelectorAll('[data-day]').forEach((r) => { r.onclick = () => import('./dayclose.js').then((m) => m.showDayClose(list.find((x) => x.id === r.dataset.day))); });

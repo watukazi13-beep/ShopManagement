@@ -5,6 +5,10 @@ import { dayKey, num } from '../calc.js';
 import { esc, fmt, fmtDate, fmtTime, icon, modal, toast, field, printHtml, toInputDate, fromInputDate } from '../ui.js';
 import { askPin } from './pin.js';
 import { atShopOrStop } from './geo.js';
+import { punctualPills, punctualText, isWorkDay, closeTimeSet } from './punctual.js';
+
+const shiftOf = (rec) => store.data.shifts.find((s) => s.id === rec.shiftId || s.dayCloseId === rec.id) || null;
+const closeAtToday = () => { const [h, m] = closeTimeSet().split(':').map(Number); const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime(); };
 
 const moneyMethods = () => (store.settings.payMethods || ['Cash']).filter((m) => !store.isCreditPay(m));
 const diffText = (d) => (d == null ? '—' : d === 0 ? 'Matches' : `${d > 0 ? 'Over' : 'Short'} ${fmt(Math.abs(d))}`);
@@ -123,7 +127,7 @@ export function showDayClose(rec) {
 function dayCloseHtml(rec, forPrint) {
   const st = store.settings;
   return `
-    ${forPrint ? `<div class="head"><div><h1>${esc(st.shopName)}</h1><div class="muted">${esc(st.address || '')}</div></div><div style="text-align:right"><h1>End of day</h1><div>${fmtDate(rec.ts)}<br>Closed ${fmtTime(rec.closedAt)} by ${esc(rec.byName || rec.by)}</div></div></div>` : `<p class="muted">Closed ${fmtTime(rec.closedAt)} by ${esc(rec.byName || rec.by)}</p>`}
+    ${forPrint ? `<div class="head"><div><h1>${esc(st.shopName)}</h1><div class="muted">${esc(st.address || '')}</div></div><div style="text-align:right"><h1>End of day</h1><div>${fmtDate(rec.ts)}<br>Closed ${fmtTime(rec.closedAt)} by ${esc(rec.byName || rec.by)}${shiftOf(rec) ? `<br>Opened ${fmtTime(shiftOf(rec).ts)} · ${punctualText(shiftOf(rec))}` : ''}</div></div></div>` : `<p class="muted">Closed ${fmtTime(rec.closedAt)} by ${esc(rec.byName || rec.by)}</p>${shiftOf(rec) ? `<p class="dc-punct">Opened ${fmtTime(shiftOf(rec).ts)} ${punctualPills(shiftOf(rec))}${shiftOf(rec).openGeo ? ` <small class="muted">· ${shiftOf(rec).openGeo.d} m from the shop</small>` : ''}</p>` : ''}`}
     <table class="${forPrint ? '' : 'table'}"><tbody>
       <tr><td>Sales (${rec.count} receipt${rec.count === 1 ? '' : 's'})</td><td class="r">${fmt(rec.total)}</td></tr>
       <tr><td>Of which on credit</td><td class="r">${fmt(rec.creditSales)}</td></tr>
@@ -148,6 +152,7 @@ export function dayCloseText(rec) {
     `Sales: ${fmt(rec.total)} (${rec.count} receipts) · credit ${fmt(rec.creditSales)} · paid out ${fmt(rec.payoutTotal)}`,
     ...rec.rows.map((r) => `${r.method}: should be ${fmt(r.expected)}, counted ${r.counted == null ? '—' : fmt(r.counted)} → ${diffText(r.difference)}`),
     `Total difference: ${diffText(rec.totalDiff)}`,
+    ...(shiftOf(rec) && punctualText(shiftOf(rec)) ? [`Opened ${fmtTime(shiftOf(rec).ts)}: ${punctualText(shiftOf(rec))}`] : []),
     `Cash taken out: ${fmt(rec.takenOut)} · left in drawer: ${fmt(rec.leftInDrawer)}`,
     ...(rec.note ? [`Note: ${rec.note}`] : []),
     `Closed by ${rec.byName || rec.by} at ${fmtTime(rec.closedAt)}`,
@@ -193,6 +198,7 @@ function closeShiftForm(sh, { onDone, summary = true, geo = null } = {}) {
     wide: true,
     body: `
       <p class="small">Shift opened ${day !== dayKey() ? `${esc(fmtDate(sh.ts))} ` : ''}${fmtTime(sh.ts)} by <b>${esc(sh.byName || '')}</b>. Closing the shift also closes the day.</p>
+      ${day === dayKey() && isWorkDay() && Date.now() < closeAtToday() ? `<div class="sg-late warn" role="alert"><b>It is before ${closeTimeSet()}</b><span>This shift will show “Closed early”.</span></div>` : ''}
       <div class="stats compact">
         <div><span>Sales</span><strong>${fmt(f.total)}</strong></div>
         <div><span>Receipts</span><strong>${f.count}</strong></div>

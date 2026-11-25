@@ -12,6 +12,14 @@ import { openCloseShift } from './sell.js';
 import { langSwitch } from '../i18n.js';
 import { askPin } from './pin.js';
 import { atShopOrStop } from './geo.js';
+import { lateNow, lateMins, fmtMins, openTime } from './punctual.js';
+
+/** Before opening: 'You are late' when the first shift of a work day opens after the opening time. */
+export function lateWarning() {
+  const m = lateNow();
+  if (!m || store.data.shifts.some((s) => (s.date || dayKey(s.ts)) === dayKey())) return '';
+  return `<div class="sg-late" role="alert"><b>You are late</b><span>The shift opens at ${openTime()}. It is now ${fmtMins(m)} late.</span></div>`;
+}
 
 const REMIND_EVERY = 15 * 60 * 1000;
 const LS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
@@ -82,6 +90,7 @@ export function checkShiftGate(h = hooks) {
         <p class="muted">${shop} · ${fmtDate(Date.now())}</p>
         <h1>${greeting()}${firstName() ? `, ${esc(firstName())}` : ''}</h1>
         <p class="muted">Open your shift to start selling. Count the money in the drawer first.</p>
+        ${lateWarning()}
         ${(() => {
           const lc = store.lastClosing();
           if (lc) return `<div class="sg-expect"><span>Left in the drawer at the last closing, ${dayKey(lc.closedAt) === dayKey() ? 'today' : fmtDate(lc.closedAt)} ${fmtTime(lc.closedAt)}</span><b>${fmt(lc.leftInDrawer)}</b></div>
@@ -134,7 +143,9 @@ export function checkShiftGate(h = hooks) {
           if (!ok) return;
           try {
             store.openShift(num(v), g.geo ? { openGeo: g.geo } : {});
-            toast(`Shift opened — have a good day${firstName() ? `, ${firstName()}` : ''}`);
+            const lm = lateMins(store.myOpenShift());
+            if (lm) toast(`Shift opened ${fmtMins(lm)} late — opening time is ${openTime()}`, { kind: 'err', ms: 6000 });
+            else toast(`Shift opened — have a good day${firstName() ? `, ${firstName()}` : ''}`);
             setTimeout(() => checkShiftGate(), 50);
           } catch (ex) { err.textContent = ex.message; }
         });

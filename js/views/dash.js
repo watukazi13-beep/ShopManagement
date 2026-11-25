@@ -4,6 +4,7 @@ import { store } from '../store.js';
 import { daySummary, dayKey, num } from '../calc.js';
 import { esc, fmt, fmtDate, fmtTime, icon } from '../ui.js';
 import { closeTime } from './shiftgate.js';
+import { punctualPills } from './punctual.js';
 
 const DAY = 86400000;
 const dayOf = (s) => s.date || dayKey(s.ts);
@@ -44,7 +45,7 @@ export function shiftNowCard() {
   const status = sh
     ? `<span class="pill ${stale || late ? 'bad' : 'good'}">${stale ? `Still open from ${fmtDate(sh.ts)}` : late ? `Close by ${closeTime()}` : 'Open now'}</span>`
     : closedToday ? diffPill(closedToday.totalDiff, closedToday.closedAt) : '<span class="pill">No shift open</span>';
-  const who = sh ? `<b data-no-tr>${esc(sh.byName || sh.by || '')}</b><small>Opened ${stale ? `${fmtDate(sh.ts)} ` : ''}${fmtTime(sh.ts)} · started with ${fmt(sh.openingCash)}</small>`
+  const who = sh ? `<b data-no-tr>${esc(sh.byName || sh.by || '')}</b><small>Opened ${stale ? `${fmtDate(sh.ts)} ` : ''}${fmtTime(sh.ts)} · started with ${fmt(sh.openingCash)}${sh.openGeo ? ` · ${sh.openGeo.d} m from the shop` : ''}</small><span class="sn-punct">${punctualPills(sh)}</span>`
     : closedToday ? `<b data-no-tr>${esc(closedToday.byName || '')}</b><small>Closed the shift at ${fmtTime(closedToday.closedAt)} · ${fmt(closedToday.takenOut)} taken out</small>`
       : '<b>No shift yet today</b><small>The shift opens when the first person starts work</small>';
   return `
@@ -144,7 +145,7 @@ export function latestShiftsCard(limit = 7) {
         <div class="grow"><b><span data-no-tr>${esc(s.byName || s.by || 'Someone')}</span> · ${dayOf(s) === today ? 'Today' : fmtDate(s.ts)}</b>
           <small>${fmtTime(s.ts)} – ${s.closedAt ? fmtTime(s.closedAt) : 'now'}</small></div>
         <span class="ls-sales num">${fmt(total)}</span>
-        ${status}${reopen}
+        ${status}${punctualPills(s)}${reopen}
       </summary>
       <div class="ls-body">
         <div class="ls-grid">

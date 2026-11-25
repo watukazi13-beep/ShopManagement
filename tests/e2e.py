@@ -1125,6 +1125,24 @@ with sync_playwright() as p:
     check(pg.locator('[name=shopLat]').input_value() == '-2.531900', '“Use my position now” fills the shop position')
     pg.evaluate("void (window.__fakeGeo = () => Promise.resolve({ lat: -2.5325, lng: 32.9481, acc: 25 }))")
 
+    # --- Late / On time (Monday to Saturday; Sundays never marked)
+    pg.evaluate("import('/js/store.js').then(({ store }) => store.saveSettings({ openShiftAt: '07:30', closeShiftAt: '19:30' }))"); pg.wait_for_timeout(200)
+    r = pg.evaluate("""import('/js/views/punctual.js').then((p) => {
+      const t = (d, hm) => new Date(`${d}T${hm}:00`).getTime();
+      return {
+        late: p.lateMins({ id: 'x1', date: '2026-11-23', ts: t('2026-11-23', '07:46') }),
+        ontime: p.lateMins({ id: 'x2', date: '2026-11-23', ts: t('2026-11-23', '07:20') }),
+        sunday: p.lateMins({ id: 'x3', date: '2026-11-22', ts: t('2026-11-22', '09:00') }),
+        early: p.earlyMins({ id: 'x4', date: '2026-11-23', ts: t('2026-11-23', '07:20'), closedAt: t('2026-11-23', '19:00') }),
+        text: p.punctualText({ id: 'x5', date: '2026-11-23', ts: t('2026-11-23', '08:45'), closedAt: t('2026-11-23', '19:40') }),
+      }; })""")
+    check(r['late'] == 16 and r['ontime'] == 0 and r['sunday'] is None, f"opening 07:46 on a Monday = 16 min late, 07:20 = on time, Sunday not marked ({r})")
+    check(r['early'] == 30 and r['text'] == 'Late 1 h 15 min', f"closing 19:00 = closed 30 min early; {r['text']}")
+    go('#/home'); pg.wait_for_timeout(400)
+    sn = pg.locator('.shift-now').inner_text()
+    check('72 m from the shop' in sn, 'Home shows how far from the shop the shift was opened')
+    check(pg.locator('.shifts-card .pill', has_text='On time').count() + pg.locator('.shifts-card .pill', has_text='Late').count() >= 1 or __import__('datetime').date.today().weekday() == 6, 'Latest shifts mark the first shift of the day Late / On time')
+
     go('#/home'); pg.wait_for_timeout(1500)
     soap_before = item(pg, 'Bar soap')['stock']
     ctx.set_offline(True)

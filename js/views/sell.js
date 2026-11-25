@@ -1,5 +1,5 @@
 import { store } from '../store.js';
-import { shiftRequired } from './shiftgate.js';
+import { shiftRequired, lateWarning as lateWarningHtml } from './shiftgate.js';
 import { cartTotals, num, parseDiscount, taxIncluded, refundTotals, dayKey } from '../calc.js';
 import { esc, fmt, fmtQty, fmtDateTime, fmtTime, icon, modal, toast, printHtml, confirmBox, emptyState, field } from '../ui.js';
 
@@ -440,7 +440,7 @@ export function openShiftPanel() {
   if (!sh) {
     modal({
       title: 'Open shift',
-      body: field('Cash in the drawer now (TSh)', '<input name="cash" type="number" inputmode="numeric" min="0" step="1" required autofocus value="0">', 'Count the money in the drawer before you start selling.'),
+      body: lateWarningHtml() + field('Cash in the drawer now (TSh)', '<input name="cash" type="number" inputmode="numeric" min="0" step="1" required autofocus value="0">', 'Count the money in the drawer before you start selling.'),
       actions: '<button class="btn ghost" value="cancel">Cancel</button><button class="btn primary">Open shift</button>',
       onSubmit: ({ cash }) => {
         import('./geo.js').then((geo) => geo.atShopOrStop('open the shift')).then(async (g) => {
@@ -448,7 +448,10 @@ export function openShiftPanel() {
           const ok = await import('./pin.js').then((m) => m.askPin({ title: 'Your PIN to open the shift' }));
           if (!ok) return;
           store.openShift(cash, g.geo ? { openGeo: g.geo } : {});
-          toast('Shift opened');
+          const p = await import('./punctual.js');
+          const lm = p.lateMins(store.myOpenShift());
+          if (lm) toast(`Shift opened ${p.fmtMins(lm)} late — opening time is ${p.openTime()}`, { kind: 'err', ms: 6000 });
+          else toast('Shift opened');
         });
       },
     });
