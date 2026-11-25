@@ -127,7 +127,7 @@ export default {
             <div class="geo-grid">
               ${field('Latitude', `<input name="shopLat" inputmode="decimal" value="${esc(s.shopLat ?? '')}" placeholder="-2.531858">`)}
               ${field('Longitude', `<input name="shopLng" inputmode="decimal" value="${esc(s.shopLng ?? '')}" placeholder="32.947995">`)}
-              ${field('Within', `<select name="shopRadius">${[100, 200, 300, 500].map((m) => `<option value="${m}" ${Number(s.shopRadius || 200) === m ? 'selected' : ''}>${m} m</option>`).join('')}</select>`)}
+              ${field('Within', `<select name="shopRadius">${[...new Set([100, 200, 300, 400, 500, 1000, Number(s.shopRadius) || 200])].sort((x, y) => x - y).map((m) => `<option value="${m}" ${Number(s.shopRadius || 200) === m ? 'selected' : ''}>${m} m</option>`).join('')}</select>`)}
             </div>
             <div class="row-btns">
               <button type="button" class="btn ghost" data-geo-here>${icon('pin')}Use my position now</button>
